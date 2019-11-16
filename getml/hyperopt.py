@@ -23,7 +23,8 @@ feature engineerers and predictors.
 
 To use the hyperparameter optimization, you first have to construct
 and provide a base `model` (of type
-:class:`~getml.models.MultirelModel`) as well as a parameter space
+:class:`~getml.models.MultirelModel` or
+:class:`~getml.models.RelboostModel`) as well as a parameter space
 `param_space` from which new hyperparameter combinations will be
 drawn. The actual algorithm to pick the next combination is chosen via
 the particular class to construct the hyperparameter optimization
@@ -45,10 +46,7 @@ A working example can be found in :ref:`hyperparameter-optimization`.
 import datetime
 import json
 import numbers
-import socket
-import time
 import warnings
-import unittest
 
 import numpy as np
 
@@ -70,8 +68,10 @@ class _BaseSearch(object):
         function to add `param_space` to the constructed instance.
 
         Args:
-            model (:class:`~getml.models.MultirelModel`) Base model
-                used to derive all models fitted and scored during the
+
+            model (:class:`~getml.models.MultirelModel`, :class:`~getml.models.RelboostModel`) 
+                Base model used
+                to derive all models fitted and scored during the
                 hyperparameter optimization. Be careful in
                 constructing it since only those parameters present in
                 `param_space` too will be overwritten. It defines the
@@ -100,6 +100,9 @@ class _BaseSearch(object):
                 :class:`~getml.predictors.XGBoostClassifier` or
                 :class:`~getml.predictors.XGBoostRegressor` (in
                 :meth:`~getml.hyperopt._BaseSearch.set_param_space`).
+            TypeError: If the model is neither
+                :class:`~getml.models.MultirelModel` nor
+                :class:`~getml.models.RelboostModel`.
             ValueError: If at least one of the keys in `param_space`
                 does not exist in the corresponding default space (in
                 :meth:`~getml.hyperopt._BaseSearch.set_param_space`).
@@ -117,6 +120,28 @@ class _BaseSearch(object):
         # parameters provided by the user.
         if use_default_param_space:
             param_space = __default_param_space_Multirel()
+            
+        # -----------------------------------------------------------
+            
+        # Load the model-dependent default parameters and overwrite
+        # them with proper parameters provided by the user.
+        if type(model) is models.MultirelModel:
+            
+            self.model_type = 'Multirel'
+            
+            if use_default_param_space:
+                param_space = __default_param_space_Multirel()
+                
+            
+        elif type(model) is models.RelboostModel:
+            
+            self.model_type = 'Relboost'
+
+            if use_default_param_space:
+                param_space = __default_param_space_Relboost()
+                
+        else:
+            raise TypeError("Unknown model class.")
         
         self.model = model
         
@@ -132,11 +157,15 @@ class _BaseSearch(object):
         
         self.params = {
             'n_iter': 100, # consistent naming with respect to sklearn
-            'ratio_iter': 1, # how much percent (relative) will be used for the burn in.
+            'ratio_iter': 0.75, # how much percent (relative) will be used for the burn in.
             'optimization_algorithm': 'nelderMead',
             'optimization_burn_in_algorithm': 'latinHypercube',
             'optimization_burn_ins': 15,
             'surrogate_burn_in_algorithm': 'latinHypercube',
+            'gaussian__kernel': 'matern52',
+            'gaussian__optimization_algorithm': 'nelderMead',
+            'gaussian__optimization_burn_in_algorithm': 'latinHypercube',
+            'gaussian__optimization_burn_ins': 50,
         }
         
         # -----------------------------------------------------------
@@ -231,6 +260,25 @@ class _BaseSearch(object):
     
     # ---------------------------------------------------------------
     
+    def __default_param_space_Relboost(self):
+        """Default parameter space for optimizing the Relboost model.
+        """
+        
+        param_space = {
+            'max_depth': [1, 10],
+            'min_num_samples': [100, 500],
+            'num_features': [10, 500],
+            'reg_lambda': [0.0, 0.1],
+            'share_selected_features': [0.1, 1.0],
+            'shrinkage': [0.01, 0.4],
+        }
+        
+        # -----------------------------------------------------------
+        
+        return param_space 
+    
+    # ---------------------------------------------------------------
+    
     def __default_param_space_XGBoost(self):
         """Default parameter space for
         :class:`~getml.predictors.XGBoostClassifier` and
@@ -290,7 +338,7 @@ class _BaseSearch(object):
         for nname in names_table1:
             if nname not in names_table2:
                 raise Exception("Missing column in " + description + ":'" + nname + "'")
-     
+            
     # -----------------------------------------------------------
     
     def __validate_ensure_param_space_bounds(self, param_space, key, bounds):
@@ -557,6 +605,54 @@ class _BaseSearch(object):
         # -----------------------------------------------------------
         
         return param_space
+
+    # ---------------------------------------------------------------
+    
+    def __validate_param_space_Relboost(self, param_space):
+        """Checks whether the parameter space provided in the param_space
+        argument are valid and can be properly handled by the
+        engine. If any does not match the constrained, it will be
+        overwritten.
+
+        """
+        if type(param_space) is not dict:
+            raise TypeError('Provided param_space argument is not a dict!.')
+
+        # -----------------------------------------------------------
+ 
+        if 'max_depth' in param_space.keys():
+            bounds = [0, np.iinfo(np.int32).max]
+            param_space = self.__validate_ensure_param_space_bounds(
+                param_space, 'max_depth', bounds)
+
+        if 'min_num_samples' in param_space.keys():
+            bounds = [1, np.iinfo(np.int32).max]
+            param_space = self.__validate_ensure_param_space_bounds(
+                param_space, 'min_num_samples', bounds)
+
+        if 'num_features' in param_space.keys():
+            bounds = [1, np.iinfo(np.int32).max]
+            param_space = self.__validate_ensure_param_space_bounds(
+                param_space, 'num_features', bounds)
+
+        if 'share_selected_features' in param_space.keys():
+            bounds = [0.0, 1.0]
+            param_space = self.__validate_ensure_param_space_bounds(
+                param_space, 'share_selected_features', bounds)
+            
+        if 'reg_lambda' in param_space.keys():
+            bounds = [0.0, np.finfo(np.float64).max]
+            param_space = self.__validate_ensure_param_space_bounds(
+                param_space, 'reg_lambda', bounds)
+            
+        if 'shrinkage' in param_space.keys():
+            bounds = [0.0, 1.0]
+            param_space = self.__validate_ensure_param_space_bounds(
+                param_space, 'shrinkage', bounds)
+        
+        # -----------------------------------------------------------
+        
+        return param_space
     
     # ---------------------------------------------------------------
     
@@ -692,7 +788,7 @@ class _BaseSearch(object):
         # -----------------------------------------------------------
                 
         if 'optimization_burn_ins' in params.keys():
-            if not isinstance(params['optimization_burn_ins'], number.Real):
+            if not isinstance(params['optimization_burn_ins'], numbers.Real):
                 raise TypeError("Parameter 'optimization_burn_ins' only supports numerical values!")
             
             if params['optimization_burn_ins'] < 1:
@@ -708,7 +804,48 @@ class _BaseSearch(object):
             if params['surrogate_burn_in_algorithm'] not in ['random', 'latinHypercube']:
                 params = self.__validate_set_params_with_warning(
                     params, 'surrogate_burn_in_algorithm', 'latinHypercube')
+                
+        # -----------------------------------------------------------
+                
+        if 'gaussian__kernel' in params.keys():
+            if not type(params['gaussian__kernel']) is str:
+                raise TypeError("Parameter 'gaussian__kernel' only supports strings!")
+            
+            if params['gaussian__kernel'] not in ['matern32', 'matern52', 'gauss', 'exp']:
+                params = self.__validate_set_params_with_warning(
+                    params, 'gaussian__kernel', 'matern52')
+                params['gaussian__kernel'] = 'matern52'
+                
+        # -----------------------------------------------------------
+                
+        if 'gaussian__optimization_algorithm' in params.keys():
+            if not type(params['gaussian__optimization_burn_in_algorithm']) is str:
+                raise TypeError("Parameter 'gaussian__optimization_burn_in_algorithm' only supports strings!")
+            
+            if params['gaussian__optimization_algorithm'] not in ['nelderMead', 'bfgs']: 
+                params = self.__validate_set_params_with_warning(
+                    params, 'gaussian__optimization_algorithm', 'nelderMead')
+                
+        # -----------------------------------------------------------
         
+        if 'gaussian__optimization_burn_in_algorithm' in params.keys():
+            if not type(params['gaussian__optimization_burn_in_algorithm']) is str:
+                raise TypeError("Parameter 'gaussian__optimization_burn_in_algorithm' only supports strings!")
+            
+            if params['gaussian__optimization_burn_in_algorithm'] not in ['random', 'latinHypercube']:
+                params = self.__validate_set_params_with_warning(
+                    params, 'gaussian__optimization_burn_in_algorithm', 'latinHypercube')
+                
+        # -----------------------------------------------------------
+        
+        if 'gaussian__optimization_burn_ins' in params.keys():
+            if not isinstance(params['gaussian__optimization_burn_ins'], numbers.Real):
+                raise TypeError("Parameter 'gaussian__optimization_burn_ins' only supports numerical values!")
+            
+            if params['gaussian__optimization_burn_ins'] < 1:
+                params = self.__validate_set_params_with_warning(
+                    params, 'gaussian__optimization_burn_ins', 1)
+                
         # -----------------------------------------------------------
         
         return params
@@ -788,11 +925,11 @@ class _BaseSearch(object):
     # ---------------------------------------------------------------
 
     def fit(
-        self, 
-        population_table_training,
-        population_table_validation,
-        peripheral_tables,
-        score=None):
+            self, 
+            population_table_training,
+            population_table_validation,
+            peripheral_tables,
+            score=None):
         """Launches the hyperparameter optimization.
 
         The optimization itself will be done by the getML software and
@@ -841,12 +978,13 @@ class _BaseSearch(object):
             TypeError: If any of `population_table_training`,
                 `population_table_validation` or `peripheral_tables`
                 is not of type :class:`~getml.engine.DataFrame`.
-
+            TypeError: If the model is neither
+                :class:`~getml.models.MultirelModel` nor
+                :class:`~getml.models.RelboostModel`.
             Exception: If the value of the 'loss_function' key stored
                 in the `params` dictionary of the base model is
                 neither :class:`~getml.loss_functions.SquareLoss` or
                 :class:`~getml.loss_functions.CrossEntropyLoss`.
-
             Exception: If either the base model was not transmitted to
                 the engine yet - using its
                 :class:`~getml.models.MultirelModel.send` method - or
@@ -854,7 +992,7 @@ class _BaseSearch(object):
                 the hyperparameter optimization - was not successful.
 
         """
-         
+        
         # -----------------------------------------------------------
         # Type assertion since Pandas DataFrames are forbidden in
         # here.
@@ -863,7 +1001,7 @@ class _BaseSearch(object):
            (type(population_table_validation) is not engine.DataFrame) or \
            (any(type(pp) is not engine.DataFrame for pp in peripheral_tables)):
            raise TypeError("Only engine.DataFrame are supported by the hyperparameter search!")
-         
+       
         # -----------------------------------------------------------
         # Check the colnames
         
@@ -872,7 +1010,7 @@ class _BaseSearch(object):
             population_table_validation.target_names, 
             "targets"
         )
-       
+        
         self.__validate_colnames(
             population_table_training.join_key_names, 
             population_table_validation.join_key_names, 
@@ -914,13 +1052,13 @@ class _BaseSearch(object):
             # Regression problem
             if score is None or score not in ['rmse_', 'mae_', 'rsquared_']:
                 score = 'rmse_'
-        
+                
         elif self.model.params['loss_function'] == "CrossEntropyLoss":
             
             # Classification problem
             if score is None or score not in ['cross_entropy_', 'auc_', 'accuracy_']:
                 score = 'cross_entropy_'
-        
+                
         else:
             
             raise Exception("Unknown loss function")
@@ -932,18 +1070,19 @@ class _BaseSearch(object):
         
         cmd = dict()
         
-        cmd["type_"] = "MultirelModel.launch_hyperopt"
+        if type(self.model) is models.MultirelModel:
+            cmd["type_"] = "MultirelModel.launch_hyperopt"
+        elif type(self.model) is models.RelboostModel:
+            cmd["type_"] = "RelboostModel.launch_hyperopt"
+        else:
+            raise TypeError("Unknown model class.")
 
         cmd["name_"] = self.model.name
         
         # ----------------------------------------------------------- 
         # Send command
 
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
-        s.connect((self.model.params["host"], self.model.params["port"]))
- 
-        comm.send_cmd(s, json.dumps(cmd))
+        s = comm.send_and_receive_socket(cmd)
         
         # ----------------------------------------------------------- 
         # Make sure that reference model exists
@@ -951,8 +1090,9 @@ class _BaseSearch(object):
         msg = comm.recv_string(s)
         
         if msg != "Found!":
+            s.close()
             raise Exception(msg)
-         
+        
         # -----------------------------------------------------------
         # Send the complete command.
         
@@ -964,7 +1104,7 @@ class _BaseSearch(object):
         cmd['param_space_'] = self.param_space
         cmd['params_'] = self.params
         
-        comm.send_cmd(s, json.dumps(cmd))
+        comm.send_string(s, json.dumps(cmd))
 
         print("Launched hyperparameter optimization...")
 
@@ -974,6 +1114,7 @@ class _BaseSearch(object):
         msg = comm.recv_string(s)
         
         if msg != "Success!":
+            s.close()
             raise Exception(msg)
         
         # ----------------------------------------------------------- 
@@ -993,30 +1134,29 @@ class _BaseSearch(object):
                 optimization.
 
         Raises:
+            TypeError: If the model is neither
+                :class:`~getml.models.MultirelModel` nor
+                :class:`~getml.models.RelboostModel`.
             Exception: If the engine yet reports back that the
                 operation was not successful.
 
         """
 
         # ------------------------------------------------------------
-        # Establish a connection with the engine. 
-        
-        s = socket.socket(
-            socket.AF_INET,
-            socket.SOCK_STREAM
-        )
-        s.connect((self.model.params['host'], self.model.params['port']))
-
-        # ------------------------------------------------------------
         # Build and send JSON command
 
         cmd = dict()
         
-        cmd['type_'] = "MultirelModel.get_hyperopt_names"
+        if type(self.model) is models.MultirelModel:
+            cmd['type_'] = "MultirelModel.get_hyperopt_names"
+        elif type(self.model) is models.RelboostModel:
+            cmd['type_'] = "RelboostModel.get_hyperopt_names"
+        else:
+            raise TypeError("Unknown model class.")
 
         cmd['name_'] = self.session_name
 
-        comm.send_cmd(s, json.dumps(cmd))
+        s = comm.send_and_receive_socket(cmd)
 
         # ------------------------------------------------------------
         # Make sure everything went well
@@ -1024,6 +1164,7 @@ class _BaseSearch(object):
         msg = comm.recv_string(s)
 
         if msg != "Success!":
+            s.close()
             raise Exception(msg)
 
         # ------------------------------------------------------------
@@ -1060,30 +1201,29 @@ class _BaseSearch(object):
                 optimization.
 
         Raises:
+            TypeError: If the model is neither
+                :class:`~getml.models.MultirelModel` nor
+                :class:`~getml.models.RelboostModel`.
             Exception: If the engine yet reports back that the
                 operation was not successful.
 
         """
 
         # ------------------------------------------------------------
-        # Establish a connection with the engine. 
-        
-        s = socket.socket(
-            socket.AF_INET,
-            socket.SOCK_STREAM
-        )
-        s.connect((self.model.params['host'], self.model.params['port']))
-
-        # ------------------------------------------------------------
         # Build and send JSON command
 
         cmd = dict()
         
-        cmd['type_'] = "MultirelModel.get_hyperopt_scores"
+        if type(self.model) is models.MultirelModel:
+            cmd['type_'] = "MultirelModel.get_hyperopt_scores"
+        elif type(self.model) is models.RelboostModel:
+            cmd['type_'] = "RelboostModel.get_hyperopt_scores"
+        else:
+            raise TypeError("Unknown model class.")
 
         cmd['name_'] = self.session_name
 
-        comm.send_cmd(s, json.dumps(cmd))
+        s = comm.send_and_receive_socket(cmd)
 
         # ------------------------------------------------------------
         # Make sure everything went well
@@ -1091,6 +1231,7 @@ class _BaseSearch(object):
         msg = comm.recv_string(s)
 
         if msg != "Success!":
+            s.close()
             raise Exception(msg)
 
         # ------------------------------------------------------------
@@ -1168,9 +1309,12 @@ class _BaseSearch(object):
             TypeError: If the predictor is neither
                 :class:`~getml.predictors.LinearRegression`,
                 :class:`~getml.predictors.LogisticRegression`,
-                :class:`~getml.predictors.XGBoostClassifier` or
+                :class:`~getml.predictors.XGBoostClassifier` nor
                 :class:`~getml.predictors.XGBoostRegressor` (in
                 :meth:`~getml.hyperopt._BaseSearch.set_param_space`).
+            TypeError: If the model is neither
+                :class:`~getml.models.MultirelModel` nor
+                :class:`~getml.models.RelboostModel`.
             ValueError: If at least one of the keys in `param_space`
                 does not exist in the corresponding default space.
 
@@ -1183,9 +1327,21 @@ class _BaseSearch(object):
         
         # Validate the parameter space provided by the user and
         # overwrite those, which are not supported by the engine.
-        param_space = self.__validate_param_space_Multirel(param_space)
+        if self.model_type is 'Multirel':
             
-        default_param_space = self.__default_param_space_Multirel()
+            param_space = self.__validate_param_space_Multirel(param_space)
+            
+            default_param_space = self.__default_param_space_Multirel()
+            
+        elif self.model_type is 'Relboost':
+
+            param_space = self.__validate_param_space_Relboost(param_space)
+            
+            default_param_space = self.__default_param_space_Relboost()
+            
+        else:
+            
+            raise TypeError('Unknown model_type')
 
         # -----------------------------------------------------------
         
@@ -1289,8 +1445,8 @@ class _BaseSearch(object):
                 
             if key not in valid_params:
                 raise ValueError(
-                   'Invalid parameter %s. ' %
-                   (key)
+                    'Invalid parameter %s. ' %
+                    (key)
                 )
             
             self.params[key] = value
@@ -1309,34 +1465,44 @@ class RandomSearch(_BaseSearch):
     bound for each dimension of `param_space` independently.
     
     Args:
-        model (:class:`~getml.models.MultirelModel`) Base model used to
+        model (:class:`~getml.models.MultirelModel`, :class:`~getml.models.RelboostModel`): 
+            Base model used to
             derive all models fitted and scored during the
             hyperparameter optimization. Be careful in constructing it
             since only those parameters present in `param_space` too
             will be overwritten. It defines the data schema, the loss
             function and any hyperparameters that are not optimized.
-        param_space (dict, optional): Dictionary containing lists of
-            length two holding the lower and upper bounds of all
-            hyperparameters which will be altered in `model` during
-            the hyperparameter optimization as values. To keep a
-            specific hyperparameter fixed, you have two
-            options. Either ensure it is not present in `param_space`
-            (but in `model`), or set both the lower and upper bound to
-            the same value. If None, the default parameters will be
-            determined for the particular combination of model,
-            predictor, and feature selector using the
+        param_space (dict): Dictionary containing lists of length two
+            holding the lower and upper bounds of all hyperparameters
+            which will be altered in `model` during the hyperparameter
+            optimization as values. To keep a specific hyperparameter
+            fixed, you have two options. Either ensure it is not
+            present in `param_space` (but in `model`), or set both the
+            lower and upper bound to the same value. If None, the
+            default parameters will be determined for the particular
+            combination of model, predictor, and feature selector
+            using the
             :meth:`~getml.hyperopt._BaseSearch.__default_param_space_Multirel`,
             :meth:`~getml.hyperopt._BaseSearch.__default_param_space_LinearRegression`,
             :meth:`~getml.hyperopt._BaseSearch.__default_param_space_LogisticRegression`,
+            :meth:`~getml.hyperopt._BaseSearch.__default_param_space_Relboost`,
             or
             :meth:`~getml.hyperopt._BaseSearch.__default_param_space_XGBoost`,
             member functions of this class. Default is None.
-        n_iter (numeric): Number of hyperparameter combinations to
-            draw and evaluate.
+        session_name (string, optional): Prefix which will be used for
+            all models fitted during the hyperparameter
+            optimization. It will also be used as a handle to
+            load/restore the constructed class from data saved in
+            getML. Thus, it has to be unique.
+        n_iter (numeric, optional): Number of hyperparameter
+            combinations to draw and evaluate.
 
     Raises:
         Exception: If not predictor is present in the provided
             `model`.
+        TypeError: If the model is neither
+            :class:`~getml.models.MultirelModel` nor
+            :class:`~getml.models.RelboostModel`.
         TypeError: If the predictor is neither
             :class:`~getml.predictors.LinearRegression`,
             :class:`~getml.predictors.LogisticRegression`,
@@ -1349,7 +1515,11 @@ class RandomSearch(_BaseSearch):
 
     """
     
-    def __init__(self, model, param_space, n_iter=None):
+    def __init__(self,
+                 model,
+                 param_space,
+                 session_name = '',
+                 n_iter=30):
         
         super().__init__(
             model = model, param_space = param_space)
@@ -1360,21 +1530,24 @@ class RandomSearch(_BaseSearch):
         params['surrogate_burn_in_algorithm'] = 'random'
         
         # Add parameters provided by the user.
-        if n_iter is not None:
-            params['n_iter'] = n_iter
+        params['n_iter'] = n_iter
             
         # Overwrite the default parameter settings
         self.set_params(params = params)
 
         # -----------------------------------------------------------
         
-        # Using a session_name all models trained in the engine
-        # during the hyperparameter optimization, which are based on
-        # the provided model, can be identified unambiguously.
-        self.session_name = datetime.datetime.now().isoformat().split(".")[0].replace(':', '-') \
-            + "-hyperopt-random"
- 
-        self.params['session_name'] = self.session_name
+        if session_name == '':
+            # Using a session_name all models trained in the engine
+            # during the hyperparameter optimization, which are based
+            # on the provided model, can be identified unambiguously.
+            self.session_name = datetime.datetime.now().isoformat().split(".")[0].replace(':', '-') \
+                + "-hyperopt-random" + "-" + self.model_type.lower()
+
+            self.params['session_name'] = self.session_name
+        else:
+            self.session_name = session_name
+            self.params['session_name'] = session_name
         
 # -------------------------------------------------------------------
 
@@ -1389,34 +1562,44 @@ class LatinHypercubeSearch(_BaseSearch):
     is drawn within the boundaries of the hypercube.
     
     Args:
-        model (:class:`~getml.models.MultirelModel`) Base model used to
+        model (:class:`~getml.models.MultirelModel`, :class:`~getml.models.RelboostModel`): 
+            Base model used to
             derive all models fitted and scored during the
             hyperparameter optimization. Be careful in constructing it
             since only those parameters present in `param_space` too
             will be overwritten. It defines the data schema, the loss
             function and any hyperparameters that are not optimized.
-        param_space (dict, optional): Dictionary containing lists of
-            length two holding the lower and upper bounds of all
-            hyperparameters which will be altered in `model` during
-            the hyperparameter optimization as values. To keep a
-            specific hyperparameter fixed, you have two
-            options. Either ensure it is not present in `param_space`
-            (but in `model`), or set both the lower and upper bound to
-            the same value. If None, the default parameters will be
-            determined for the particular combination of model,
-            predictor, and feature selector using the
+        param_space (dict): Dictionary containing lists of length two
+            holding the lower and upper bounds of all hyperparameters
+            which will be altered in `model` during the hyperparameter
+            optimization as values. To keep a specific hyperparameter
+            fixed, you have two options. Either ensure it is not
+            present in `param_space` (but in `model`), or set both the
+            lower and upper bound to the same value. If None, the
+            default parameters will be determined for the particular
+            combination of model, predictor, and feature selector
+            using the
             :meth:`~getml.hyperopt._BaseSearch.__default_param_space_Multirel`,
             :meth:`~getml.hyperopt._BaseSearch.__default_param_space_LinearRegression`,
             :meth:`~getml.hyperopt._BaseSearch.__default_param_space_LogisticRegression`,
+            :meth:`~getml.hyperopt._BaseSearch.__default_param_space_Relboost`,
             or
             :meth:`~getml.hyperopt._BaseSearch.__default_param_space_XGBoost`,
             member functions of this class. Default is None.
-        n_iter (numeric): Number of hyperparameter combinations to
-            draw and evaluate.
+        session_name (string, optional): Prefix which will be used for
+            all models fitted during the hyperparameter
+            optimization. It will also be used as a handle to
+            load/restore the constructed class from data saved in
+            getML. Thus, it has to be unique.
+        n_iter (numeric, optional): Number of hyperparameter
+            combinations to draw and evaluate.
 
     Raises:
         Exception: If not predictor is present in the provided
             `model`.
+        TypeError: If the model is neither
+            :class:`~getml.models.MultirelModel` nor
+            :class:`~getml.models.RelboostModel`.
         TypeError: If the predictor is neither
             :class:`~getml.predictors.LinearRegression`,
             :class:`~getml.predictors.LogisticRegression`,
@@ -1428,7 +1611,11 @@ class LatinHypercubeSearch(_BaseSearch):
             :meth:`~getml.hyperopt._BaseSearch.set_param_space`).
 
     """
-    def __init__(self, model, param_space, n_iter=None):
+    def __init__(self,
+                 model,
+                 param_space,
+                 session_name='',
+                 n_iter=30):
         
         super().__init__(
             model = model, param_space = param_space)
@@ -1439,20 +1626,142 @@ class LatinHypercubeSearch(_BaseSearch):
         params['surrogate_burn_in_algorithm'] = 'latinHypercube'
         
         # Add parameters provided by the user.
-        if n_iter is not None:
-            params['n_iter'] = n_iter
+        params['n_iter'] = n_iter
             
         # Overwrite the default parameter settings
         self.set_params(params = params)
         
         # -----------------------------------------------------------
         
-        # Using a session_name all models trained in the engine
-        # during the hyperparameter optimization, which are based on
-        # the provided model, can be identified unambiguously.
-        self.session_name = datetime.datetime.now().isoformat().split(".")[0].replace(':', '-')\
-             + "-hyperopt-latin"
+        if session_name == '':
+            # Using a session_name all models trained in the engine
+            # during the hyperparameter optimization, which are based
+            # on the provided model, can be identified unambiguously.
+            self.session_name = datetime.datetime.now().isoformat().split(".")[0].replace(':', '-')\
+                + "-hyperopt-latin" + "-" + self.model_type.lower()
 
-        self.params['session_name'] = self.session_name
+            self.params['session_name'] = self.session_name
+        else:
+            self.session_name = session_name
+            self.params['session_name'] = session_name
+
+# -------------------------------------------------------------------
+
+class GaussianHyperparameterSearch(_BaseSearch):
+    """Bayesian hyperparameter optimization using a Gaussian Process.
+
+    Args:
+        model (:class:`~getml.models.MultirelModel`, :class:`~getml.models.RelboostModel`): 
+            Base model used to
+            derive all models fitted and scored during the
+            hyperparameter optimization. Be careful in constructing it
+            since only those parameters present in `param_space` too
+            will be overwritten. It defines the data schema, the loss
+            function and any hyperparameters that are not optimized.
+        param_space (dict): Dictionary containing lists of length two
+            holding the lower and upper bounds of all hyperparameters
+            which will be altered in `model` during the hyperparameter
+            optimization as values. To keep a specific hyperparameter
+            fixed, you have two options. Either ensure it is not
+            present in `param_space` (but in `model`), or set both the
+            lower and upper bound to the same value. If None, the
+            default parameters will be determined for the particular
+            combination of model, predictor, and feature selector
+            using the
+            :meth:`~getml.hyperopt._BaseSearch.__default_param_space_Multirel`,
+            :meth:`~getml.hyperopt._BaseSearch.__default_param_space_LinearRegression`,
+            :meth:`~getml.hyperopt._BaseSearch.__default_param_space_LogisticRegression`,
+            :meth:`~getml.hyperopt._BaseSearch.__default_param_space_Relboost`,
+            or
+            :meth:`~getml.hyperopt._BaseSearch.__default_param_space_XGBoost`,
+            member functions of this class. Default is None.
+        session_name (string, optional): Prefix which will be used for
+            all models fitted during the hyperparameter
+            optimization. It will also be used as a handle to
+            load/restore the constructed class from data saved in
+            getML. Thus, it has to be unique.
+        n_iter (numeric, optional): Number of hyperparameter
+            combinations to draw and evaluate.
+
+        ratio_iter (numeric, optional): Number of hyperparameter
+            combinations to draw and evaluate.
+
+        optimization_algorithm (string, optional): Number of
+            hyperparameter combinations to draw and evaluate.
+
+        optimization_burn_in_algorithm (string, optional): Number of
+            hyperparameter combinations to draw and evaluate.
+
+        optimization_burn_ins (numeric, optional): Number of
+            hyperparameter combinations to draw and evaluate.
+
+        surrogate_burn_in_algorithm (string, optional): Number of
+            hyperparameter combinations to draw and evaluate.
+
+        gaussian__kernel (string, optional): Number of hyperparameter
+            combinations to draw and evaluate.
+
+        gaussian__optimization_algorithm (string, optional): Number of
+            hyperparameter combinations to draw and evaluate.
+
+        gaussian__optimization_burn_in_algorithm (string, optional):
+            Number of hyperparameter combinations to draw and
+            evaluate.
+
+        gaussian__optimization_burn_ins (numeric, optional): Number of
+            hyperparameter combinations to draw and evaluate.
+
+    """
+    
+    def __init__(self, 
+                 model, 
+                 param_space, 
+                 session_name = '', 
+                 n_iter=100, 
+                 ratio_iter=0.75, 
+                 optimization_algorithm='nelderMead',
+                 optimization_burn_in_algorithm='latinHypercube',
+                 optimization_burn_ins=15,
+                 surrogate_burn_in_algorithm='latinHypercube',
+                 gaussian__kernel='matern52',
+                 gaussian__optimization_algorithm='nelderMead',
+                 gaussian__optimization_burn_in_algorithm='latinHypercube',
+                 gaussian__optimization_burn_ins=50):
+        
+        super().__init__(
+            model = model, param_space = param_space)
+        
+        ## -----------------------------------------------------------
+    
+        params = dict()
+        
+        # Add parameters provided by the user.
+        params['n_iter'] = n_iter
+        params['ratio_iter'] = ratio_iter
+        params['optimization_algorithm'] = optimization_algorithm
+        params['optimization_burn_in_algorithm'] = optimization_burn_in_algorithm
+        params['optimization_burn_ins'] = optimization_burn_ins
+        params['surrogate_burn_in_algorithm'] = surrogate_burn_in_algorithm
+        params['gaussian__kernel'] = gaussian__kernel
+        params['gaussian__optimization_algorithm'] = gaussian__optimization_algorithm
+        params['gaussian__optimization_burn_in_algorithm'] = gaussian__optimization_burn_in_algorithm
+        params['gaussian__optimization_burn_ins'] = gaussian__optimization_burn_ins
+            
+        # Overwrite the default parameter settings
+        self.set_params(params = params)
+        
+        # -----------------------------------------------------------
+        
+        if session_name == '':
+            # Using a session_name all models trained in the engine
+            # during the hyperparameter optimization, which are based
+            # on the provided model, can be identified unambiguously.
+            self.session_name = datetime.datetime.now().isoformat().split(".")[0].replace(':', '-')\
+                + "-hyperopt-gaussian" + "-" + self.model_type.lower()
+
+            self.params['session_name'] = self.session_name
+        else:
+            self.session_name = session_name
+            self.params['session_name'] = session_name
 
 # -------------------------------------------------------------------

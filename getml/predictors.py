@@ -93,7 +93,7 @@ class XGBoostClassifier(_Predictor):
         colsample_bytree: Subsample ratio for the columns used, for each tree.
         gamma: Minimum loss reduction required for a further split. A higher
             value means stronger regularization.
-        learning_rate**: Learning rate for the gradient boosting algorithm.
+        learning_rate: Learning rate for the gradient boosting algorithm.
         max_delta_step: The maximum delta step allowed for the weight estimation of each tree.
         max_depth: Maximum allowed depth of the trees.
         min_child_weights: Minimum sum of weights needed in each child node for a split.

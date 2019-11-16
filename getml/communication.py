@@ -22,10 +22,10 @@
 Handles the communication for the getml library
 """
 
+import getml
 import json
 import socket
 import sys
-import warnings
 
 import numpy as np
 
@@ -231,33 +231,104 @@ def recv_categorical_matrix(socket):
 
 # ----------------------------------------------------
 
+def send(cmd):
+    """Sends a command to the getml engine and closes the established
+    connection.
 
-def send_string(socket, string):
+    Creates a socket and sends a command to the getML engine using the
+    module-wide variables :py:const:`~getml.host` and
+    :py:const:`~getml.port`.
+
+    A message (string) from the :py:class:`socket.socket` will be
+    received using :py:func:`~getml.recv_string` and the socket will
+    be closed. If the message is "Success!", everything work
+    properly. Else, an Exception will be thrown containing the
+    message.
+
+    In case another message is supposed to be send by the engine,
+    :py:func:`~getml.communication.send_and_receive_socket` has to be used
+    and the calling function must handle the message itself!
+
+    Please be very careful when altering the routing/calling behavior
+    of the socket communication! The engine might react in a quite
+    sensible and freezing way.
+
+    Arg:
+        cmd (dict): A dictionary specifying the command the engine is
+            supposed to execute. It _must_ contain at least two string
+            values with the corresponding keys being named "name_" and
+            "type_".
+
+    Raises:
+        Exception: If the message received from the engine is not
+            "Success!
+
     """
-    Sends a string to the getml engine
-    (an actual string, not a bytestring).
+    
+    s = socket.socket(
+        socket.AF_INET,
+        socket.SOCK_STREAM
+    )
+    s.connect((getml.host, getml.port))
+
+    send_string(s, json.dumps(cmd))
+        
+    ## -----------------------------------------------------------
+    ## The calling function does not want to further use the
+    ## socket. Therefore, it will be checked here whether the
+    ## request was successful and closed.
+    msg = recv_string(s)
+
+    s.close()
+        
+    if msg != "Success!":
+        raise Exception(msg)
+
+# ----------------------------------------------------
+
+def send_and_receive_socket(cmd):
+    """Sends a command to the getml engine and returns the established
+    connection.
+
+    Creates a socket and sends a command to the getML engine using the
+    module-wide variables :py:const:`~getml.host` and
+    :py:const:`~getml.port`.
+
+    The function will return the socket it opened and the calling
+    function is free to receive whatever data is desires over it. But
+    the latter has also to take care of closing the socket afterwards
+    itself!
+
+    Please be very careful when altering the routing/calling behavior
+    of the socket communication! The engine might react in a quite
+    sensible and freezing way. Especially implemented handling of
+    socket sessions (their passing from function to function) must not
+    be altered or separated in distinct calls to the
+    :py:func:`~getml.communication.send` function! Some commands have
+    to be send via the same socket or the engine will not be able to
+    handle them and might block.
+
+    Arg:
+        cmd (dict): A dictionary specifying the command the engine is
+            supposed to execute. It _must_ contain at least two string
+            values with the corresponding keys being named "name_" and
+            "type_"."
+
+    Returns:
+        :py:class:`socket.socket`: A socket using which the Python API
+            can communicate with the getML engine.
+
     """
+    
+    s = socket.socket(
+        socket.AF_INET,
+        socket.SOCK_STREAM
+    )
+    s.connect((getml.host, getml.port))
 
-    encoded = string.encode('utf-8')
-
-    size = len(encoded)
-
-    # By default, numeric data sent over the socket is big endian,
-    # also referred to as network-byte-order!
-    if sys.byteorder == 'little':
-
-        socket.sendall(
-            np.asarray([size]).astype(np.int32).byteswap().tostring()
-        )
-
-    else:
-
-        socket.sendall(
-            np.asarray([size]).astype(np.int32).tostring()
-        )
-
-    socket.sendall(encoded)
-
+    send_string(s, json.dumps(cmd))
+    
+    return s
 
 # ----------------------------------------------------
 
@@ -277,7 +348,7 @@ def send_categorical_matrix(socket, categorical_matrix):
 
     else:
         shape = categorical_matrix.shape
-
+        
     # By default, numeric data sent over the socket is big endian,
     # also referred to as network-byte-order!
     if sys.byteorder == 'little':
@@ -313,17 +384,6 @@ def send_categorical_matrix(socket, categorical_matrix):
         )
 
 # ----------------------------------------------------
-
-
-def send_cmd(socket, cmd_string):
-    """
-    Sends a command to the getml engine.
-    """
-
-    send_string(socket, cmd_string)
-
-# ----------------------------------------------------
-
 
 def send_matrix(socket, matrix):
     """
@@ -362,5 +422,33 @@ def send_matrix(socket, matrix):
         socket.sendall(
             matrix.astype(np.float64).tostring()
         )
+
+# ----------------------------------------------------
+
+def send_string(socket, string):
+    """
+    Sends a string to the getml engine
+    (an actual string, not a bytestring).
+    """
+
+    encoded = string.encode('utf-8')
+
+    size = len(encoded)
+
+    # By default, numeric data sent over the socket is big endian,
+    # also referred to as network-byte-order!
+    if sys.byteorder == 'little':
+
+        socket.sendall(
+            np.asarray([size]).astype(np.int32).byteswap().tostring()
+        )
+
+    else:
+
+        socket.sendall(
+            np.asarray([size]).astype(np.int32).tostring()
+        )
+
+    socket.sendall(encoded)
 
 # ----------------------------------------------------

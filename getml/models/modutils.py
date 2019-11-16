@@ -18,7 +18,7 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.
 
-from .placeholder import Placeholder
+from getml.placeholder import Placeholder
 
 # -----------------------------------------------------------------------------
 
@@ -69,4 +69,4 @@ def _parse_placeholders(json_obj, params):
 
     return params
 
-# -----------------------------------------------------------------------------
+

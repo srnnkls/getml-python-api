@@ -18,29 +18,38 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.
 
-import pkg_resources
+import getml.communication as comm
 
-# Default connection settings to communicate with the engine. See
-# communincation.send().
-host = 'localhost'
-port = 1708
+from .multirel_model import MultirelModel
+from .relboost_model import RelboostModel
 
-try:
-    __version__ = pkg_resources.get_distribution(__name__).version
-except pkg_resources.DistributionNotFound:
-    # package is not installed
-    pass
+# -----------------------------------------------------------------------------
 
-__all__ = (
-    "aggregations",
-    "columns",
-    "communication",
-    "container",
-    "database",
-    "datasets",
-    "engine",
-    "hyperopt",
-    "loss_functions",
-    "models",
-    "predictors"
-)
+def get_model(
+        name
+):
+    """
+    Returns a handle to the model specified by name.
+
+    Args:
+        name (str): Name of the model.
+
+    """
+
+    cmd = dict()
+    cmd["type_"] = "get_model"
+    cmd["name_"] = name
+
+    s = comm.send_and_receive_socket(cmd)
+
+    msg = comm.recv_string(s) 
+
+    if msg == "MultirelModel":
+        return MultirelModel(name=name).refresh()
+    elif msg == "RelboostModel":
+        return RelboostModel(name=name).refresh()
+    else:
+        raise Exception(msg)
+
+
+# -----------------------------------------------------------------------------

@@ -18,234 +18,16 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.
 
-"""
-This module contains communication routines with the getml engine.
-"""
-
-import copy
-import datetime
 import json
-import numbers
 import os
-import platform
-import socket
-import sys
-import time
-import warnings
 
 import numpy as np
 import pandas as pd
 
+from getml.placeholder import Placeholder
+
 import getml.columns as columns
 import getml.communication as comm
-
-# -----------------------------------------------------------------------------
-
-
-def delete_project(
-        name,
-        host='localhost',
-        port=1708
-):
-    """
-    Deletes the project.
-
-    All data and models contained in the project directory will be lost.
-
-    Args:
-        name (str): Name of your project.
-        host (str): Host IP of the getml engine. Defaults to 'localhost'.
-        port (int): Port of the getml engine. Defaults to 1708.
-
-    Raises:
-        ConnectionRefusedError: If unable to connect to engine
-    """
-
-    cmd = dict()
-    cmd["type_"] = "delete_project"
-    cmd["name_"] = name
-
-    s = socket.socket(
-        socket.AF_INET,
-        socket.SOCK_STREAM
-    )
-    s.connect((host, port))
-
-    comm.send_cmd(s, json.dumps(cmd))
-
-    msg = comm.recv_string(s)
-
-    s.close()
-
-    if msg != "Success!":
-        raise Exception(msg)
-
-# -----------------------------------------------------------------------------
-
-
-def is_alive(
-        host='localhost',
-        port=1708
-):
-    """
-    Checks if engine is running.
-
-    Args:
-        host (str): Host IP of the getml engine. Defaults to 'localhost'.
-        port (int): Port of the getml engine. Defaults to 1708.
-
-    Returns:
-        bool: True if the engine is running and accepting commands, False otherwise 
-    """
-
-    cmd = dict()
-    cmd["type_"] = "is_alive"
-    cmd["name_"] = ""
-
-    s = socket.socket(
-        socket.AF_INET,
-        socket.SOCK_STREAM
-    )
-    try:
-        s.connect((host, port))
-    except ConnectionRefusedError:
-        return False
-
-    comm.send_cmd(s, json.dumps(cmd))
-
-    s.close()
-
-    return True
-
-
-# -----------------------------------------------------------------------------
-
-
-def run(path, host='localhost', port=1708):
-    """
-    Starts the engine
-
-    The engine is started as a background process. Effectively the same
-    as calling `./run` or `run.bat` in a separate terminal. The output of the engine
-    will be stored in a script called 'log-CURRRENT_DATE.txt'.
-    
-    Args:
-        path (str): Path of the getml engine (where the script run or run.bat can be found).
-        host (str): Host IP of the getml engine. Defaults to 'localhost'.
-        port (int): Port of the getml engine. Defaults to 1708.
-    """
-
-    cwd = os.getcwd()
-
-    os.chdir(path)
-
-    if platform.system == "Windows":
-        os.popen("run.bat >> log-" +
-                 datetime.datetime.now().isoformat().split(".")[0].replace(':', '-') + ".txt")
-    else:
-        os.popen("./run >> log-" +
-                 datetime.datetime.now().isoformat().split(".")[0].replace(':', '-') + ".txt")
-
-    while is_alive(host, port) == False:
-        time.sleep(0.1)
-
-    os.chdir(cwd)
-
-# -----------------------------------------------------------------------------
-
-
-def setup(path):
-    """
-    Runs the setup script
-
-    This is only relevant on Mac and Linux. 
-    
-    Args:
-        path (str): Path of the getml engine (where the script setup.sh can be found).
-    """
-    if platform.system != "Windows":
-        cwd = os.getcwd()
-
-        os.chdir(path)
-
-        os.system("sh setup.sh")
-
-        os.chdir(cwd)
-
-# -----------------------------------------------------------------------------
-
-
-def set_project(
-        name,
-        host='localhost',
-        port=1708
-):
-    """
-    Select a project.
-
-    All data frames and models will be stored in the corresponding project
-    directory. If a project of that name does not already exist, a new one will
-    be created.
-
-    Args:
-        name (str): Name of your project.
-        host (str): Host IP of the getml engine. Defaults to 'localhost'.
-        port (int): Port of the getml engine. Defaults to 1708.
-
-    Raises:
-        ConnectionRefusedError: If unable to connect to engine
-    """
-    if not is_alive(host=host, port=port):
-        err_msg = "Cannot connect to getML engine. Make sure the engine is running and you are logged in."
-        raise ConnectionRefusedError(err_msg)
-
-    cmd = dict()
-    cmd["type_"] = "set_project"
-    cmd["name_"] = name
-
-    s = socket.socket(
-        socket.AF_INET,
-        socket.SOCK_STREAM
-    )
-    s.connect((host, port))
-
-    comm.send_cmd(s, json.dumps(cmd))
-
-    msg = comm.recv_string(s)
-
-    s.close()
-
-    if msg != "Success!":
-        raise Exception(msg)
-
-# -----------------------------------------------------------------------------
-
-
-def shutdown(host='localhost', port=1708):
-    """
-    Shuts the engine down.
-
-    Args:
-        host (str): Host IP of the getml engine. Defaults to 'localhost'.
-        port (int): Port of the getml engine. Defaults to 1708.
-
-    Raises:
-        ConnectionRefusedError: If unable to connect to engine
-    """
-
-    cmd = dict()
-    cmd["type_"] = "shutdown"
-    cmd["name_"] = "all"
-
-    s = socket.socket(
-        socket.AF_INET,
-        socket.SOCK_STREAM
-    )
-    s.connect((host, port))
-
-    comm.send_cmd(s, json.dumps(cmd))
-
-    s.close()
 
 # -----------------------------------------------------------------------------
 
@@ -272,8 +54,6 @@ class DataFrame(object):
         units (dict): Mapping of column names to units.
             All columns containing that column name will be assigned the unit.
             Columns containing the same unit can be directly compared.
-        host (str): Host IP of the getml engine. Defaults to 'localhost'.
-        port (int): Port of the getml engine. Defaults to 1708.
 
     """
     
@@ -286,9 +66,7 @@ class DataFrame(object):
         discrete=None,
         numerical=None,
         targets=None,
-        units=None,
-        host='localhost',
-        port=1708
+        units=None
     ):
 
         # ---------------------------------------------------------------------
@@ -296,9 +74,6 @@ class DataFrame(object):
         self.name = name
 
         self.units = units or dict()
-
-        self.host = host
-        self.port = port
 
         # ---------------------------------------------------------------------
         
@@ -319,9 +94,7 @@ class DataFrame(object):
                     name=name,
                     role="categorical",
                     num=i,
-                    df_name=self.name,
-                    host=self.host,
-                    port=self.port
+                    df_name=self.name
                 )
             )
 
@@ -338,9 +111,7 @@ class DataFrame(object):
                     unit=discrete_units[i],
                     role="discrete",
                     num=i,
-                    df_name=self.name,
-                    host=self.host,
-                    port=self.port
+                    df_name=self.name
                 )
             )
 
@@ -354,9 +125,7 @@ class DataFrame(object):
                     name=name,
                     role="join_key",
                     num=i,
-                    df_name=self.name,
-                    host=self.host,
-                    port=self.port
+                    df_name=self.name
                 )
             )
 
@@ -373,9 +142,7 @@ class DataFrame(object):
                     unit=numerical_units[i],
                     role="numerical",
                     num=i,
-                    df_name=self.name,
-                    host=self.host,
-                    port=self.port
+                    df_name=self.name
                 )
             )
 
@@ -389,9 +156,7 @@ class DataFrame(object):
                     name=name,
                     role="target",
                     num=i,
-                    df_name=self.name,
-                    host=self.host,
-                    port=self.port
+                    df_name=self.name
                 )
             )
 
@@ -405,24 +170,13 @@ class DataFrame(object):
                     name=name,
                     role="time_stamp",
                     num=i,
-                    df_name=self.name,
-                    host=self.host,
-                    port=self.port
+                    df_name=self.name
                 )
             )
 
     # -------------------------------------------------------------------------
 
     def __add_categorical_column(self, col, name, role, unit):
-
-        # ------------------------------------------------------
-        # Create connection.
-
-        s = socket.socket(
-            socket.AF_INET,
-            socket.SOCK_STREAM
-        )
-        s.connect((self.host, self.port))
 
         # ------------------------------------------------------
         # Send command
@@ -436,19 +190,7 @@ class DataFrame(object):
         cmd["role_"] = role
         cmd["unit_"] = unit
 
-        comm.send_cmd(s, json.dumps(cmd))
-
-        # ------------------------------------------------------
-        # Make sure everything went well
-
-        msg = comm.recv_string(s)
-
-        if msg != "Success!":
-            raise Exception(msg)
-
-        # ------------------------------------------------------
-
-        s.close()
+        comm.send(cmd)
 
         # ------------------------------------------------------
 
@@ -457,15 +199,6 @@ class DataFrame(object):
     # -------------------------------------------------------------------------
 
     def __add_column(self, col, name, role, unit):
-
-        # ------------------------------------------------------
-        # Create connection.
-
-        s = socket.socket(
-            socket.AF_INET,
-            socket.SOCK_STREAM
-        )
-        s.connect((self.host, self.port))
 
         # ------------------------------------------------------
         # Send command
@@ -479,19 +212,7 @@ class DataFrame(object):
         cmd["role_"] = role
         cmd["unit_"] = unit
 
-        comm.send_cmd(s, json.dumps(cmd))
-
-        # ------------------------------------------------------
-        # Make sure everything went well
-
-        msg = comm.recv_string(s)
-
-        if msg != "Success!":
-            raise Exception(msg)
-
-        # ------------------------------------------------------
-
-        s.close()
+        comm.send(cmd)
 
         # ------------------------------------------------------
 
@@ -567,13 +288,13 @@ class DataFrame(object):
         cmd["type_"] = "DataFrame.close"
         cmd["name_"] = self.name
 
-        comm.send_cmd(s, json.dumps(cmd))
-
+        comm.send_string(s, json.dumps(cmd))
+        
         msg = comm.recv_string(s)
-
+        
         if msg != "Success!":
             raise Exception(msg)
-
+        
     # -------------------------------------------------------------------------
 
     def __extract_shape(self, cmd, name):
@@ -600,7 +321,7 @@ class DataFrame(object):
 
 
     def __send_data(self, data_frame, s):
-
+        
         for col in self.__categorical_columns:
             col.send(
                 data_frame[[col.name]].values.astype(np.str),
@@ -611,8 +332,7 @@ class DataFrame(object):
             if "time stamp" in col.thisptr["unit_"]:
                 col.send(
                     self.__transform_timestamps(
-                        data_frame[[col.name]]
-                    ),
+                        data_frame[[col.name]]),
                     s
                 )
             else:
@@ -622,7 +342,7 @@ class DataFrame(object):
                     ).values,
                     s
                 )
-
+                
         for col in self.__join_key_columns:
             col.send(
                 data_frame[[col.name]].values.astype(np.str),
@@ -644,7 +364,7 @@ class DataFrame(object):
                     ).values,
                     s
                 )
-
+                
         for col in self.__target_columns:
             col.send(
                 data_frame[[col.name]].apply(
@@ -652,7 +372,7 @@ class DataFrame(object):
                 ).values,
                 s
             )
-
+            
         for col in self.__time_stamp_columns:
             col.send(
                 self.__transform_timestamps(
@@ -660,19 +380,10 @@ class DataFrame(object):
                 ),
                 s
             )
-
+            
     # -------------------------------------------------------------------------
 
     def __rm_col(self, name, role):
-
-        # ------------------------------------------------------
-        # Create connection.
-
-        s = socket.socket(
-            socket.AF_INET,
-            socket.SOCK_STREAM
-        )
-        s.connect((self.host, self.port))
 
         # ------------------------------------------------------
         # Send command
@@ -684,19 +395,7 @@ class DataFrame(object):
         cmd["df_name_"] = self.name
         cmd["role_"] = role
 
-        comm.send_cmd(s, json.dumps(cmd))
-
-        # ------------------------------------------------------
-        # Make sure everything went well
-
-        msg = comm.recv_string(s)
-
-        if msg != "Success!":
-            raise Exception(msg)
-
-        # ------------------------------------------------------
-
-        s.close()
+        comm.send(cmd)
 
         # ------------------------------------------------------
 
@@ -805,12 +504,19 @@ class DataFrame(object):
     # -------------------------------------------------------------------------
 
     def append(self, data_frame, sock=None):
-        """
-        Appends data to tables that already exist on the getml engine.
-        
+        """Appends data to tables that already exist on the getml engine.
+
+        If sock is None, it will call a function to create a new
+        socket, use it for the data transfer and close it
+        afterwards. If, instead, a socket is provided, it just sends
+        all the data but does not close it.
+
         Args:
-            data_frame (pandas.DataFrame): Table that you want to be appended to the existing data.
-            sock (optional): Connected socket.
+            data_frame (pandas.DataFrame): Table that you want to be
+                appended to the existing data.
+            sock (optional): Socket connecting the Python API with the
+                getML engine.
+
         """
 
         # ------------------------------------------------------
@@ -825,15 +531,10 @@ class DataFrame(object):
         cmd["name_"] = self.name
 
         if sock is None:
-            s = socket.socket(
-                socket.AF_INET,
-                socket.SOCK_STREAM
-            )
-            s.connect((self.host, self.port))
+            s = comm.send_and_receive_socket(cmd)
         else:
             s = sock
-
-        comm.send_cmd(s, json.dumps(cmd))
+            comm.send_string(s, json.dumps(cmd))
 
         # ------------------------------------------------------
         # Send individual matrices to getml engine
@@ -843,7 +544,7 @@ class DataFrame(object):
         # ------------------------------------------------------
 
         self.__close(s)
-
+        
         if sock is None:
             s.close()
 
@@ -881,15 +582,6 @@ class DataFrame(object):
         """
 
         # -------------------------------------------
-        # Establish communication with getml engine
-
-        s = socket.socket(
-            socket.AF_INET,
-            socket.SOCK_STREAM
-        )
-        s.connect((self.host, self.port))
-
-        # -------------------------------------------
         # Send JSON command to getml engine
 
         cmd = dict()
@@ -897,21 +589,7 @@ class DataFrame(object):
         cmd["name_"] = self.name
         cmd["mem_only_"] = mem_only
 
-        comm.send_cmd(
-            s,
-            json.dumps(cmd)
-        )
-
-        # -------------------------------------------
-        # Make sure everything went well and close
-        # connection
-
-        msg = comm.recv_string(s)
-
-        s.close()
-
-        if msg != "Success!":
-            raise Exception(msg)
+        comm.send(cmd)
 
     # -------------------------------------------------------------------------
 
@@ -947,15 +625,6 @@ class DataFrame(object):
         """
 
         # -------------------------------------------
-        # Establish communication with getml engine
-
-        s = socket.socket(
-            socket.AF_INET,
-            socket.SOCK_STREAM
-        )
-        s.connect((self.host, self.port))
-
-        # -------------------------------------------
         # Send JSON command to getml engine
 
         cmd = dict()
@@ -972,21 +641,7 @@ class DataFrame(object):
 
         cmd["append_"] = append
         
-        comm.send_cmd(
-            s,
-            json.dumps(cmd)
-        )
-
-        # -------------------------------------------
-        # Make sure everything went well and close
-        # connection
-
-        msg = comm.recv_string(s)
-
-        s.close()
-
-        if msg != "Success!":
-            raise Exception(msg)
+        comm.send(cmd)
 
         # -------------------------------------------
 
@@ -1007,14 +662,6 @@ class DataFrame(object):
                 Refer to https://pocoproject.org/docs/Poco.DateTimeFormatter.html#9946 for the options.
         """
 
-        # -------------------------------------------
-        # Establish communication with getml engine
-
-        s = socket.socket(
-            socket.AF_INET,
-            socket.SOCK_STREAM
-        )
-        s.connect((self.host, self.port))
 
         # -------------------------------------------
         # Send JSON command to getml engine
@@ -1033,10 +680,7 @@ class DataFrame(object):
         cmd["append_"] = append
         cmd["time_formats_"] = time_formats
 
-        comm.send_cmd(
-            s,
-            json.dumps(cmd)
-        )
+        s = comm.send_and_receive_socket(cmd)
 
         # -------------------------------------------
         # Send the JSON string
@@ -1072,15 +716,6 @@ class DataFrame(object):
         """
 
         # -------------------------------------------
-        # Establish communication with getml engine
-
-        s = socket.socket(
-            socket.AF_INET,
-            socket.SOCK_STREAM
-        )
-        s.connect((self.host, self.port))
-
-        # -------------------------------------------
         # Send JSON command to getml engine
 
         cmd = dict()
@@ -1097,21 +732,7 @@ class DataFrame(object):
 
         cmd["append_"] = append
         
-        comm.send_cmd(
-            s,
-            json.dumps(cmd)
-        )
-
-        # -------------------------------------------
-        # Make sure everything went well and close
-        # connection
-
-        msg = comm.recv_string(s)
-
-        s.close()
-
-        if msg != "Success!":
-            raise Exception(msg)
+        comm.send(cmd)
 
         # -------------------------------------------
 
@@ -1128,25 +749,16 @@ class DataFrame(object):
         """
 
         # -------------------------------------------
-        # Establish communication with getml engine
-
-        s = socket.socket(
-            socket.AF_INET,
-            socket.SOCK_STREAM
-        )
-        s.connect((self.host, self.port))
-
-        # -------------------------------------------
         # Send JSON command to getml engine
 
         cmd = dict()
         cmd["type_"] = "DataFrame.get"
         cmd["name_"] = self.name
 
-        comm.send_cmd(
-            s,
-            json.dumps(cmd)
-        )
+        # -------------------------------------------
+        # Establish communication with getml engine
+
+        s = comm.send_and_receive_socket(cmd)
 
         # -------------------------------------------
         # Receive all columns
@@ -1208,26 +820,7 @@ class DataFrame(object):
         cmd["df_name_"] = self.name
         cmd["aggregations_"] = [agg.thisptr for agg in aggregations]
 
-        # ----------------------------------------------------------------------
-        # Send command
-
-        s = socket.socket(
-            socket.AF_INET,
-            socket.SOCK_STREAM
-        )
-        s.connect((self.host, self.port))
-
-        comm.send_cmd(s, json.dumps(cmd))
-
-        # ----------------------------------------------------------------------
-        # Make sure everything went well.
-
-        msg = comm.recv_string(s)
-
-        s.close()
-
-        if msg != "Success!":
-            raise Exception(msg)
+        comm.send(cmd)
 
         # ----------------------------------------------------------------------
         # Create handle for new data frame.
@@ -1266,15 +859,6 @@ class DataFrame(object):
         """
 
         # -------------------------------------------
-        # Establish communication with getml engine
-
-        s = socket.socket(
-            socket.AF_INET,
-            socket.SOCK_STREAM
-        )
-        s.connect((self.host, self.port))
-
-        # -------------------------------------------
         # Send JSON command to getml engine
 
         cmd = dict()
@@ -1298,21 +882,7 @@ class DataFrame(object):
         if where is not None:
             cmd["where_"] = where.thisptr
 
-        comm.send_cmd(
-            s,
-            json.dumps(cmd)
-        )
-
-        # -------------------------------------------
-        # Make sure everything went well and close
-        # connection
-
-        msg = comm.recv_string(s)
-
-        s.close()
-
-        if msg != "Success!":
-            raise Exception(msg)
+        comm.send(cmd)
 
         # -------------------------------------------
 
@@ -1351,35 +921,18 @@ class DataFrame(object):
         cmd["type_"] = "DataFrame.load"
         cmd["name_"] = self.name
 
-        s = socket.socket(
-            socket.AF_INET,
-            socket.SOCK_STREAM
-        )
-        s.connect((self.host, self.port))
+        comm.send(cmd)
 
-        comm.send_cmd(s, json.dumps(cmd))
-
-        msg = comm.recv_string(s)
-
-        s.close()
-
-        if msg != "Success!":
-            raise Exception(msg)
+        # ----------------------------------------------------------------------
 
         return self.refresh()
 
     # -------------------------------------------------------------------------
 
-    def nbytes(self):
+    def n_bytes(self):
         """
         Returns the size of the data stored in the DataFrame in bytes.
         """
-
-        s = socket.socket(
-            socket.AF_INET,
-            socket.SOCK_STREAM
-        )
-        s.connect((self.host, self.port))
 
         # ------------------------------------------------------
         # Build and send JSON command
@@ -1388,7 +941,7 @@ class DataFrame(object):
         cmd["type_"] = "DataFrame.nbytes"
         cmd["name_"] = self.name
 
-        comm.send_cmd(s, json.dumps(cmd))
+        s = comm.send_and_receive_socket(cmd)
 
         # ------------------------------------------------------
         # Make sure model exists on getml engine
@@ -1396,6 +949,7 @@ class DataFrame(object):
         msg = comm.recv_string(s)
 
         if msg != "Found!":
+            s.close()
             raise Exception(msg)
 
         # ------------------------------------------------------
@@ -1409,6 +963,96 @@ class DataFrame(object):
 
         return np.uint64(nbytes)
 
+    # -------------------------------------------------------------------------
+    
+    @property
+    def n_categorical(self):
+        """
+        Number of categorical columns.
+        """
+        return len(self.__categorical_columns)
+    
+    # -------------------------------------------------------------------------
+    
+    @property
+    def n_discrete(self):
+        """
+        Number of discrete columns.
+        """
+        return len(self.__discrete_columns)
+    
+    # -------------------------------------------------------------------------
+    
+    @property
+    def n_join_keys(self):
+        """
+        Number of join keys.
+        """
+        return len(self.__join_key_columns)
+    
+    # -------------------------------------------------------------------------
+    
+    @property
+    def n_numerical(self):
+        """
+        Number of numerical columns.
+        """
+        return len(self.__numerical_columns)
+    
+    # -------------------------------------------------------------------------
+
+    def n_rows(self):
+        """
+        Returns the number of rows in the data frame.
+        """
+
+        # ------------------------------------------------------
+        # Build and send JSON command
+
+        cmd = dict()
+        cmd["type_"] = "DataFrame.nrows"
+        cmd["name_"] = self.name
+
+        s = comm.send_and_receive_socket(cmd)
+
+        # ------------------------------------------------------
+        # Make sure model exists on getml engine
+
+        msg = comm.recv_string(s)
+
+        if msg != "Found!":
+            s.close()
+            raise Exception(msg)
+
+        # ------------------------------------------------------
+        # Receive number of rows from getml engine
+
+        nrows = comm.recv_string(s)
+
+        # ------------------------------------------------------
+
+        s.close()
+
+        return np.int32(nrows)
+
+    # -------------------------------------------------------------------------
+    
+    @property
+    def n_targets(self):
+        """
+        Number of target columns.
+        """
+        return len(self.__target_columns)
+    
+    # -------------------------------------------------------------------------
+    
+    @property
+    def n_time_stamps(self):
+        """
+        Number of time stamps columns.
+        """
+        return len(self.__time_stamp_columns)
+    
     # -------------------------------------------------------------------------
 
     def numerical(self, name):
@@ -1447,9 +1091,7 @@ class DataFrame(object):
             df_name=self.name,
             operator="random",
             operand1=None,
-            operand2=None,
-            host=self.host,
-            port=self.port
+            operand2=None
         )
         col.thisptr["seed_"] = seed
         return col
@@ -1477,15 +1119,10 @@ class DataFrame(object):
             time_formats (str): The formats tried when parsing time stamps.
                 Refer to https://pocoproject.org/docs/Poco.DateTimeFormatter.html#9946 for the options.
         """
-
         # -------------------------------------------
-        # Establish communication with getml engine
-
-        s = socket.socket(
-            socket.AF_INET,
-            socket.SOCK_STREAM
-        )
-        s.connect((self.host, self.port))
+        # Transform paths
+        
+        fnames_ = [os.path.abspath(_) for _ in fnames]
 
         # -------------------------------------------
         # Send JSON command to getml engine
@@ -1494,7 +1131,7 @@ class DataFrame(object):
         cmd["type_"] = "DataFrame.read_csv"
         cmd["name_"] = self.name
 
-        cmd["fnames_"] = fnames
+        cmd["fnames_"] = fnames_
 
         cmd["append_"] = append
         cmd["quotechar_"] = quotechar
@@ -1508,21 +1145,7 @@ class DataFrame(object):
         cmd["targets_"] = self.target_names
         cmd["time_stamps_"] = self.time_stamp_names
 
-        comm.send_cmd(
-            s,
-            json.dumps(cmd)
-        )
-
-        # -------------------------------------------
-        # Make sure everything went well and close
-        # connection
-
-        msg = comm.recv_string(s)
-
-        s.close()
-
-        if msg != "Success!":
-            raise Exception(msg)
+        comm.send(cmd)
 
         # -------------------------------------------
 
@@ -1544,13 +1167,7 @@ class DataFrame(object):
         cmd["type_"] = "DataFrame.refresh"
         cmd["name_"] = self.name
 
-        s = socket.socket(
-            socket.AF_INET,
-            socket.SOCK_STREAM
-        )
-        s.connect((self.host, self.port))
-
-        comm.send_cmd(s, json.dumps(cmd))
+        s = comm.send_and_receive_socket(cmd)
 
         msg = comm.recv_string(s)
 
@@ -1607,9 +1224,7 @@ class DataFrame(object):
             discrete=discrete,
             numerical=numerical,
             targets=targets,
-            units=self.units,
-            host=self.host,
-            port=self.port
+            units=self.units
         )
 
         # ----------------------------------------------------------------------
@@ -1626,36 +1241,30 @@ class DataFrame(object):
             df_name=self.name,
             operator="rowid",
             operand1=None,
-            operand2=None,
-            host=self.host,
-            port=self.port
+            operand2=None
         )
 
     # -------------------------------------------------------------------------
 
     def save(self):
-        """
-        Saves the DataFrame on the engine.
+        """Saves the DataFrame on the engine.
+        
+        To be saved on the engine, it already has to be present
+        there. You can use the :meth:`~getml.engine.DataFrame.send`
+        function to upload it to the engine.
+                
+        Returns:
+            :class:`~getml.engine.DataFrame`:
+                The current instance of the DataFrame class.
         """
 
         cmd = dict()
         cmd["type_"] = "DataFrame.save"
         cmd["name_"] = self.name
 
-        s = socket.socket(
-            socket.AF_INET,
-            socket.SOCK_STREAM
-        )
-        s.connect((self.host, self.port))
-
-        comm.send_cmd(s, json.dumps(cmd))
-
-        msg = comm.recv_string(s)
-
-        s.close()
-
-        if msg != "Success!":
-            raise Exception(msg)
+        comm.send(cmd)
+        
+        return self
 
     # -------------------------------------------------------------------------
 
@@ -1725,14 +1334,20 @@ class DataFrame(object):
 
     # -------------------------------------------------------------------------
 
-    def send(self, data_frame, sock=None):
-        """
-        Send data to the getml engine.
+    def send(self, data_frame, sock = None):
+        """Send data to the getml engine.
+
+        If sock is None, it will call a function to create
+        a new socket, use it for the data transfer and close it
+        afterwards. If, instead, a socket is provided, it just sends
+        all the data but does not close it.
 
         Args:
             data_frame (pandas.DataFrame): Data Frame that you want to be
                 appended to the existing data.
-            sock (optional): Connected socket.
+            sock (optional): Socket connecting the Python API with the
+                getML engine.
+
         """
 
         # ------------------------------------------------------
@@ -1748,21 +1363,16 @@ class DataFrame(object):
         cmd["name_"] = self.name
 
         if sock is None:
-            s = socket.socket(
-                socket.AF_INET,
-                socket.SOCK_STREAM
-            )
-            s.connect((self.host, self.port))
+            s = comm.send_and_receive_socket(cmd)
         else:
             s = sock
-
-        comm.send_cmd(s, json.dumps(cmd))
+            comm.send_string(s, json.dumps(cmd))
 
         msg = comm.recv_string(s)
 
         if msg != "Success!":
             raise Exception(msg)
-
+            
         # ------------------------------------------------------
         # Send individual columns to getml engine
 
@@ -1771,7 +1381,7 @@ class DataFrame(object):
         # ------------------------------------------------------
 
         self.__close(s)
-
+        
         if sock is None:
             s.close()
 
@@ -1828,6 +1438,10 @@ class DataFrame(object):
             quotechar (str): The character used to wrap strings.
             sep (str): The separator used for separating fields.
         """
+        # ----------------------------------------------------------------------
+        # Transform path
+        
+        fname_ = os.path.abspath(fname)
         
         # ----------------------------------------------------------------------
         # Build command
@@ -1836,30 +1450,11 @@ class DataFrame(object):
         cmd["type_"] = "DataFrame.to_csv"
         cmd["name_"] = self.name
 
-        cmd["fname_"] = fname 
+        cmd["fname_"] = fname_ 
         cmd["quotechar_"] = quotechar 
         cmd["sep_"] = sep 
 
-        # ----------------------------------------------------------------------
-        # Send command
-
-        s = socket.socket(
-            socket.AF_INET,
-            socket.SOCK_STREAM
-        )
-        s.connect((self.host, self.port))
-
-        comm.send_cmd(s, json.dumps(cmd))
-
-        # ----------------------------------------------------------------------
-        # Make sure everything went well.
-
-        msg = comm.recv_string(s)
-
-        s.close()
-
-        if msg != "Success!":
-            raise Exception(msg)
+        comm.send(cmd)
 
     # -------------------------------------------------------------------------
     
@@ -1881,27 +1476,25 @@ class DataFrame(object):
 
         cmd["table_name_"] = table_name 
 
-        # ----------------------------------------------------------------------
-        # Send command
-
-        s = socket.socket(
-            socket.AF_INET,
-            socket.SOCK_STREAM
-        )
-        s.connect((self.host, self.port))
-
-        comm.send_cmd(s, json.dumps(cmd))
-
-        # ----------------------------------------------------------------------
-        # Make sure everything went well.
-
-        msg = comm.recv_string(s)
-
-        s.close()
-
-        if msg != "Success!":
-            raise Exception(msg)
+        comm.send(cmd)
  
+    # -------------------------------------------------------------------------
+    
+    def to_placeholder(self):
+        """
+        Generates a placeholder from the data frame.
+        """
+        self.refresh()
+        return Placeholder(
+            name=self.name,
+            categorical=self.categorical_names,
+            discrete=self.discrete_names,
+            numerical=self.numerical_names,
+            join_keys=self.join_key_names,
+            time_stamps=self.time_stamp_names,
+            targets=self.target_names
+        )
+     
     # -------------------------------------------------------------------------
 
     def where(self, name, condition):
@@ -1923,26 +1516,7 @@ class DataFrame(object):
         cmd["new_df_"] = name
         cmd["condition_"] = condition.thisptr
 
-        # ----------------------------------------------------------------------
-        # Send command
-
-        s = socket.socket(
-            socket.AF_INET,
-            socket.SOCK_STREAM
-        )
-        s.connect((self.host, self.port))
-
-        comm.send_cmd(s, json.dumps(cmd))
-
-        # ----------------------------------------------------------------------
-        # Make sure everything went well.
-
-        msg = comm.recv_string(s)
-
-        s.close()
-
-        if msg != "Success!":
-            raise Exception(msg)
+        comm.send(cmd)
 
         # ----------------------------------------------------------------------
         # Create handle for new data frame.
@@ -1953,20 +1527,5 @@ class DataFrame(object):
 
     # -------------------------------------------------------------------------
 
-
-# -----------------------------------------------------------------------------
-
-
-def load(name, host='localhost', port=1708):
-    """
-    Loads a DataFrame object into memory.
-
-    Args:
-        name (str): Name of the DataFrame object
-        host (str): Host IP of the getml engine. Defaults to 'localhost'.
-        port (int): Port of the getml engine. Default to 1708.
-    """
-
-    return DataFrame(name).load()
 
 # -----------------------------------------------------------------------------

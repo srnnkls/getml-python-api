@@ -1,3 +1,4 @@
+
 # Copyright 2019 The SQLNet Company GmbH
 
 # Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -18,10 +19,19 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.
 
-from .placeholder import Placeholder
+"""
+This module contains the automated feature engineering algorithms - the heart of the getml library.
+"""
+
+from getml.placeholder import Placeholder
+
+from .helpers import get_model
 from .multirel_model import MultirelModel
+from .relboost_model import RelboostModel
 
 __all__ = (
+    "get_model",
     "Placeholder",
-    "MultirelModel"
+    "MultirelModel",
+    "RelboostModel"
 )

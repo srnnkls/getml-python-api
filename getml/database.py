@@ -23,7 +23,7 @@ This module contains communication routines for the database.
 """
 
 import json
-import socket
+import os
 
 import getml.communication as comm
 
@@ -36,9 +36,7 @@ def connect_postgres(
     dbname,
     user,
     password,
-    time_formats=["%Y-%m-%dT%H:%M:%s%z", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"],
-    host='localhost',
-    port=1708):
+    time_formats=["%Y-%m-%dT%H:%M:%s%z", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"]):
     """
     Creates a new PostgreSQL database connection.
 
@@ -50,8 +48,6 @@ def connect_postgres(
         password (str): Password with which to log into the PostgreSQL database.
         time_formats (str, optional): The formats tried when parsing time stamps.
             Check out https://pocoproject.org/docs/Poco.DateTimeFormatter.html#9946 for the options.
-        host (str, optional): Host IP of the getml engine. Defaults to 'localhost'
-        port (int): Port of the getml engine. Defaults to 1708.
     """
 
     # -------------------------------------------
@@ -74,31 +70,13 @@ def connect_postgres(
     # -------------------------------------------
     # Send JSON command to engine.
 
-    s = socket.socket(
-        socket.AF_INET,
-        socket.SOCK_STREAM
-    )
-    s.connect((host, port))
-
-    comm.send_cmd(s, json.dumps(cmd))
-
-    # -------------------------------------------
-    # Make sure that everything went well.
-
-    msg = comm.recv_string(s)
-
-    s.close()
-
-    if msg != "Success!":
-        raise Exception(msg)
+    comm.send(cmd)
 
 # -----------------------------------------------------------------------------
 
 def connect_sqlite3(
     name=":memory:",
-    time_formats=["%Y-%m-%dT%H:%M:%s%z", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"],
-    host='localhost',
-    port=1708):
+    time_formats=["%Y-%m-%dT%H:%M:%s%z", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"]):
     """
     Creates a new SQLite3 database connection.
 
@@ -108,8 +86,6 @@ def connect_sqlite3(
             database.
         time_formats (str, optional): The formats tried when parsing time stamps.
             Check out https://pocoproject.org/docs/Poco.DateTimeFormatter.html#9946 for the options.
-        host (str, optional): Host IP of the getml engine. Defaults to 'localhost'
-        port (int): Port of the getml engine. Defaults to 1708.
     """
 
     # -------------------------------------------
@@ -117,7 +93,7 @@ def connect_sqlite3(
 
     cmd = dict()
 
-    cmd["name_"] = name
+    cmd["name_"] = os.path.abspath(name)
     cmd["type_"] = "Database.new"
 
     cmd["db_"] = "sqlite3"
@@ -126,38 +102,18 @@ def connect_sqlite3(
     # -------------------------------------------
     # Send JSON command to engine.
 
-    s = socket.socket(
-        socket.AF_INET,
-        socket.SOCK_STREAM
-    )
-    s.connect((host, port))
-
-    comm.send_cmd(s, json.dumps(cmd))
-
-    # -------------------------------------------
-    # Make sure that everything went well.
-
-    msg = comm.recv_string(s)
-
-    s.close()
-
-    if msg != "Success!":
-        raise Exception(msg)
+    comm.send(cmd)
 
 # -----------------------------------------------------------------------------
 
 
 def drop_table(
-    name,
-    host='localhost',
-    port=1708):
+    name):
     """
     Drops a table from the database.
 
     Args:
         name (str): The table to be dropped.
-        host (str, optional): Host IP of the getml engine. Defaults to 'localhost'
-        port (int): Port of the getml engine. Defaults to 1708.
     """
 
     # -------------------------------------------
@@ -171,37 +127,17 @@ def drop_table(
     # -------------------------------------------
     # Send JSON command to engine.
 
-    s = socket.socket(
-        socket.AF_INET,
-        socket.SOCK_STREAM
-    )
-    s.connect((host, port))
-
-    comm.send_cmd(s, json.dumps(cmd))
-
-    # -------------------------------------------
-    # Make sure that everything went well.
-
-    msg = comm.recv_string(s)
-
-    s.close()
-
-    if msg != "Success!":
-        raise Exception(msg)
+    comm.send(cmd)
 
 # -----------------------------------------------------------------------------
 
 def execute(
-    query,
-    host='localhost',
-    port=1708):
+    query):
     """
     Executes an SQL query on the database.
 
     Args:
         query (str): The SQL query to be executed.
-        host (str, optional): Host IP of the getml engine. Defaults to 'localhost'
-        port (int): Port of the getml engine. Defaults to 1708.
     """
 
     # -------------------------------------------
@@ -215,13 +151,7 @@ def execute(
     # -------------------------------------------
     # Send JSON command to engine.
 
-    s = socket.socket(
-        socket.AF_INET,
-        socket.SOCK_STREAM
-    )
-    s.connect((host, port))
-
-    comm.send_cmd(s, json.dumps(cmd))
+    s = comm.send_and_receive_socket(cmd)
 
     # -------------------------------------------
     # Send the actual query.
@@ -238,20 +168,15 @@ def execute(
     if msg != "Success!":
         raise Exception(msg)
 
-
 # -----------------------------------------------------------------------------
 
 def get_colnames(
-    name,
-    host='localhost',
-    port=1708):
+    name):
     """
     Lists the colnames of a table held in the database.
 
     Args:
         name (str): The name of the database.
-        host (str, optional): Host IP of the getml engine. Defaults to 'localhost'
-        port (int): Port of the getml engine. Defaults to 1708.
     """
     # -------------------------------------------
     # Prepare command.
@@ -264,13 +189,7 @@ def get_colnames(
     # -------------------------------------------
     # Send JSON command to engine.
 
-    s = socket.socket(
-        socket.AF_INET,
-        socket.SOCK_STREAM
-    )
-    s.connect((host, port))
-
-    comm.send_cmd(s, json.dumps(cmd))
+    s = comm.send_and_receive_socket(cmd)
 
     # -------------------------------------------
     # Make sure that everything went well.
@@ -278,6 +197,7 @@ def get_colnames(
     msg = comm.recv_string(s)
 
     if msg != "Success!":
+        s.close()
         raise Exception(msg)
 
     # -------------------------------------------
@@ -293,15 +213,9 @@ def get_colnames(
 # -----------------------------------------------------------------------------
 
 
-def list_tables(
-    host='localhost',
-    port=1708):
+def list_tables():
     """
     Lists all tables and views currently held in the database.
-    
-    Args:
-        host (str, optional): Host IP of the getml engine. Defaults to 'localhost'
-        port (int, optional): Port of the getml engine. Defaults to 1708.
     """
     
     # -------------------------------------------
@@ -315,13 +229,7 @@ def list_tables(
     # -------------------------------------------
     # Send JSON command to engine.
 
-    s = socket.socket(
-        socket.AF_INET,
-        socket.SOCK_STREAM
-    )
-    s.connect((host, port))
-
-    comm.send_cmd(s, json.dumps(cmd))
+    s = comm.send_and_receive_string(cmd)
 
     # -------------------------------------------
     # Make sure that everything went well.
@@ -329,6 +237,7 @@ def list_tables(
     msg = comm.recv_string(s)
 
     if msg != "Success!":
+        s.close()
         raise Exception(msg)
 
     # -------------------------------------------
@@ -349,9 +258,7 @@ def read_csv(
     header=True,
     quotechar='"',
     sep=',',
-    skip=0,
-    host='localhost',
-    port=1708):
+    skip=0):
     """
     Reads a CSV file into the database.
 
@@ -364,10 +271,11 @@ def read_csv(
         skip (int, optional): Number of lines to skip at the beginning of each
             file (Default: 0). If *header* is True, the lines will be skipped
             before the header.
-        host (str, optional): Host IP of the getml engine. Defaults to 'localhost'
-        port (int, optional): Port of the getml engine. Defaults to 1708.
     """
-
+    # -------------------------------------------
+    # Transform paths
+    fnames_ = [os.path.abspath(_) for _ in fnames]
+    
     # -------------------------------------------
     # Prepare command.
 
@@ -376,7 +284,7 @@ def read_csv(
     cmd["name_"] = name
     cmd["type_"] = "Database.read_csv"
 
-    cmd["fnames_"] = fnames
+    cmd["fnames_"] = fnames_
     cmd["header_"] = header
     cmd["quotechar_"] = quotechar
     cmd["sep_"] = sep
@@ -385,23 +293,7 @@ def read_csv(
     # -------------------------------------------
     # Send JSON command to engine.
 
-    s = socket.socket(
-        socket.AF_INET,
-        socket.SOCK_STREAM
-    )
-    s.connect((host, port))
-
-    comm.send_cmd(s, json.dumps(cmd))
-
-    # -------------------------------------------
-    # Make sure that everything went well.
-
-    msg = comm.recv_string(s)
-
-    s.close()
-
-    if msg != "Success!":
-        raise Exception(msg)
+    comm.send(cmd)
 
 # -----------------------------------------------------------------------------
 
@@ -413,9 +305,7 @@ def sniff_csv(
     num_lines_sniffed=1000,
     quotechar='"',
     sep=',',
-    skip=0,
-    host='localhost',
-    port=1708):
+    skip=0):
     """
     Sniffs a list of CSV files.
 
@@ -428,12 +318,13 @@ def sniff_csv(
         skip (int, optional): Number of lines to skip at the beginning of each
             file (Default: 0). If *header* is True, the lines will be skipped
             before the header.
-        host (str, optional): Host IP of the getml engine. Defaults to 'localhost'
-        port (int, optional): Port of the getml engine. Defaults to 1708.
 
     Returns:
         str: Appropriate `CREATE TABLE` statement.
     """
+    # -------------------------------------------
+    # Transform paths
+    fnames_ = [os.path.abspath(_) for _ in fnames]
 
     # -------------------------------------------
     # Prepare command.
@@ -443,7 +334,7 @@ def sniff_csv(
     cmd["name_"] = name
     cmd["type_"] = "Database.sniff_csv"
 
-    cmd["fnames_"] = fnames
+    cmd["fnames_"] = fnames_
     cmd["header_"] = header
     cmd["num_lines_sniffed_"] = num_lines_sniffed
     cmd["quotechar_"] = quotechar
@@ -453,13 +344,7 @@ def sniff_csv(
     # -------------------------------------------
     # Send JSON command to engine.
 
-    s = socket.socket(
-        socket.AF_INET,
-        socket.SOCK_STREAM
-    )
-    s.connect((host, port))
-
-    comm.send_cmd(s, json.dumps(cmd))
+    s = comm.send_and_receive_socket(cmd)
 
     # -------------------------------------------
     # Make sure that everything went well.
@@ -467,6 +352,7 @@ def sniff_csv(
     msg = comm.recv_string(s)
 
     if msg != "Success!":
+        s.close()
         raise Exception(msg)
 
     # -------------------------------------------

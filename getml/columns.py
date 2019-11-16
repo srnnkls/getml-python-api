@@ -18,16 +18,14 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.
 
+"""
+Columns are part of the :class:`~getml.engine.DataFrame`. This module contains routines for manipulating 
+them.
+"""
+
 import copy
-import datetime
 import json
 import numbers
-import os
-import platform
-import socket
-import sys
-import time
-import warnings
 
 import numpy as np
 import pandas as pd
@@ -42,17 +40,12 @@ class _Aggregation(object):
         self,
         alias,
         col,
-        type,
-        host,
-        port
+        type
     ):
         self.thisptr = dict()
         self.thisptr["as_"] = alias
         self.thisptr["col_"] = col.thisptr
         self.thisptr["type_"] = type
-
-        self.host = host
-        self.port = port
 
     # --------------------------------------------------------------------------
 
@@ -60,15 +53,6 @@ class _Aggregation(object):
         """
         Receives the value of the aggregation over the column.
         """
-
-        # -------------------------------------------
-        # Create connection.
-
-        s = socket.socket(
-            socket.AF_INET,
-            socket.SOCK_STREAM
-        )
-        s.connect((self.host, self.port))
 
         # -------------------------------------------
         # Build command string
@@ -82,9 +66,9 @@ class _Aggregation(object):
         cmd["df_name_"] = self.thisptr["col_"]["df_name_"]
 
         # -------------------------------------------
-        # Send command
+        # Create connection and send the command
 
-        comm.send_cmd(s, json.dumps(cmd))
+        s = send_and_receive_socket(cmd)
 
         msg = comm.recv_string(s)
 
@@ -93,6 +77,7 @@ class _Aggregation(object):
         # and close connection
 
         if msg != "Success!":
+            s.close()
             raise Exception(msg)
 
         mat = comm.recv_matrix(s)
@@ -115,9 +100,7 @@ class _VirtualBooleanColumn(object):
         df_name,
         operator,
         operand1,
-        operand2,
-        host,
-        port
+        operand2
     ):
         self.thisptr = dict()
 
@@ -132,9 +115,6 @@ class _VirtualBooleanColumn(object):
         if operand2 is not None:
             self.thisptr["operand2_"] = self.__parse_operand(operand2)
 
-        self.host = host
-        self.port = port
-
     # -----------------------------------------------------------------------------
 
     def __and__(self, other):
@@ -142,9 +122,7 @@ class _VirtualBooleanColumn(object):
             df_name=self.thisptr["df_name_"],
             operator="and",
             operand1=self,
-            operand2=other,
-            host=self.host,
-            port=self.port
+            operand2=other
         )
 
     # -----------------------------------------------------------------------------
@@ -154,9 +132,7 @@ class _VirtualBooleanColumn(object):
             df_name=self.thisptr["df_name_"],
             operator="equal_to",
             operand1=self,
-            operand2=other,
-            host=self.host,
-            port=self.port
+            operand2=other
         )
 
     # -----------------------------------------------------------------------------
@@ -166,9 +142,7 @@ class _VirtualBooleanColumn(object):
             df_name=self.thisptr["df_name_"],
             operator="or",
             operand1=self,
-            operand2=other,
-            host=self.host,
-            port=self.port
+            operand2=other
         )
 
     # -----------------------------------------------------------------------------
@@ -178,9 +152,7 @@ class _VirtualBooleanColumn(object):
             df_name=self.thisptr["df_name_"],
             operator="not_equal_to",
             operand1=self,
-            operand2=other,
-            host=self.host,
-            port=self.port
+            operand2=other
         )
 
     # -----------------------------------------------------------------------------
@@ -190,9 +162,7 @@ class _VirtualBooleanColumn(object):
             df_name=self.thisptr["df_name_"],
             operator="xor",
             operand1=self,
-            operand2=other,
-            host=self.host,
-            port=self.port
+            operand2=other
         )
 
     # -----------------------------------------------------------------------------
@@ -223,15 +193,6 @@ class _VirtualBooleanColumn(object):
         """
 
         # -------------------------------------------
-        # Create connection
-
-        s = socket.socket(
-            socket.AF_INET,
-            socket.SOCK_STREAM
-        )
-        s.connect((self.host, self.port))
-
-        # -------------------------------------------
         # Build command string
 
         cmd = dict()
@@ -244,7 +205,7 @@ class _VirtualBooleanColumn(object):
         # -------------------------------------------
         # Send command to engine
 
-        comm.send_cmd(s, json.dumps(cmd))
+        s = comm.send_and_receive_socket(cmd)
 
         msg = comm.recv_string(s)
 
@@ -253,6 +214,7 @@ class _VirtualBooleanColumn(object):
         # and close connection
 
         if msg != "Found!":
+            s.close()
             raise Exception(msg)
 
         mat = comm.recv_boolean_matrix(s)
@@ -274,9 +236,7 @@ class _VirtualBooleanColumn(object):
             df_name=self.thisptr["df_name_"],
             operator="not",
             operand1=self,
-            operand2=None,
-            host=self.host,
-            port=self.port
+            operand2=None
         )
 
 # -----------------------------------------------------------------------------
@@ -291,8 +251,6 @@ class CategoricalColumn(container.Container):
         num (int): Number of the column.
         unit (str): Unit of the column.
         df_name (str): Name of the DataFrame containing this column.
-        host (str): Host IP of the getML engine. Defaults to 'localhost'
-        port (int): Port of the getML engine. Defaults to 1708
     """
 
     num_categorical_matrices = 0
@@ -303,12 +261,10 @@ class CategoricalColumn(container.Container):
         unit="",
         role="categorical",
         num=0,
-        df_name="",
-        host='localhost',
-        port=1708
+        df_name=""
     ):
 
-        super(CategoricalColumn, self).__init__(host, port)
+        super(CategoricalColumn, self).__init__()
 
         CategoricalColumn.num_categorical_matrices += 1
         if name == "":
@@ -338,9 +294,7 @@ class _VirtualCategoricalColumn(object):
         df_name,
         operator,
         operand1,
-        operand2,
-        host,
-        port
+        operand2
     ):
         self.thisptr = dict()
 
@@ -355,9 +309,6 @@ class _VirtualCategoricalColumn(object):
 
         if operand2 is not None:
             self.thisptr["operand2_"] = self.__parse_operand(operand2)
-
-        self.host = host
-        self.port = port
 
     # -----------------------------------------------------------------------------
 
@@ -391,8 +342,6 @@ class Column(container.Container):
         num (int): Number of the column.
         unit (str): Unit of the column.
         df_name (str): Name of the DataFrame containing this column.
-        host (str): Host IP of the getML engine. Defaults to 'localhost'
-        port (int): Port of the getML engine. Defaults to 1708
     """
 
     num_columns = 0
@@ -403,12 +352,10 @@ class Column(container.Container):
         unit="",
         role="numerical",
         num=0,
-        df_name="",
-        host='localhost',
-        port=1708
+        df_name=""
     ):
 
-        super(Column, self).__init__(host, port)
+        super(Column, self).__init__()
 
         Column.num_columns += 1
         if name == "":
@@ -438,9 +385,7 @@ class _VirtualColumn(object):
         df_name,
         operator,
         operand1,
-        operand2,
-        host,
-        port
+        operand2
     ):
         self.thisptr = dict()
 
@@ -455,9 +400,6 @@ class _VirtualColumn(object):
 
         if operand2 is not None:
             self.thisptr["operand2_"] = self.__parse_operand(operand2)
-
-        self.host = host
-        self.port = port
 
     # -----------------------------------------------------------------------------
 
@@ -485,9 +427,7 @@ def __abs(self):
         df_name=self.thisptr["df_name_"],
         operator="abs",
         operand1=self,
-        operand2=None,
-        host=self.host,
-        port=self.port
+        operand2=None
     )
 
 Column.abs = __abs
@@ -501,9 +441,7 @@ def __acos(self):
         df_name=self.thisptr["df_name_"],
         operator="acos",
         operand1=self,
-        operand2=None,
-        host=self.host,
-        port=self.port
+        operand2=None
     )
 
 Column.acos = __acos
@@ -516,9 +454,7 @@ def __add(self, other):
         df_name=self.thisptr["df_name_"],
         operator="plus",
         operand1=self,
-        operand2=other,
-        host=self.host,
-        port=self.port
+        operand2=other
     )
 
 Column.__add__ = __add
@@ -555,7 +491,7 @@ def __assert_equal(self, alias):
     Args:
         alias (str): Name for the new column.
     """
-    return _Aggregation(alias, self, "assert_equal", self.host, self.port)
+    return _Aggregation(alias, self, "assert_equal")
 
 Column.assert_equal = __assert_equal
 _VirtualColumn.assert_equal = __assert_equal
@@ -569,9 +505,7 @@ def __asin(self):
         df_name=self.thisptr["df_name_"],
         operator="asin",
         operand1=self,
-        operand2=None,
-        host=self.host,
-        port=self.port
+        operand2=None
     )
 
 Column.asin = __asin
@@ -585,9 +519,7 @@ def __atan(self):
         df_name=self.thisptr["df_name_"],
         operator="atan",
         operand1=self,
-        operand2=None,
-        host=self.host,
-        port=self.port
+        operand2=None
     )
 
 Column.atan = __atan
@@ -602,7 +534,7 @@ def __avg(self, alias="new_column"):
     Args:
         alias (str): Name for the new column.
     """
-    return _Aggregation(alias, self, "avg", self.host, self.port)
+    return _Aggregation(alias, self, "avg")
 
 Column.avg = __avg
 _VirtualColumn.avg = __avg
@@ -615,9 +547,7 @@ def __cbrt(self):
         df_name=self.thisptr["df_name_"],
         operator="cbrt",
         operand1=self,
-        operand2=None,
-        host=self.host,
-        port=self.port
+        operand2=None
     )
 
 Column.cbrt = __cbrt
@@ -632,9 +562,7 @@ def __ceil(self):
         df_name=self.thisptr["df_name_"],
         operator="ceil",
         operand1=self,
-        operand2=None,
-        host=self.host,
-        port=self.port
+        operand2=None
     )
 
 Column.ceil = __ceil
@@ -647,9 +575,7 @@ def __concat(self, other):
         df_name=self.thisptr["df_name_"],
         operator="concat",
         operand1=self,
-        operand2=other,
-        host=self.host,
-        port=self.port
+        operand2=other
     )
 
 def __rconcat(self, other):
@@ -657,9 +583,7 @@ def __rconcat(self, other):
         df_name=self.thisptr["df_name_"],
         operator="concat",
         operand1=other,
-        operand2=self,
-        host=self.host,
-        port=self.port
+        operand2=self
     )
 
 CategoricalColumn.__add__ = __concat
@@ -682,9 +606,7 @@ def __contains(self, other):
         df_name=self.thisptr["df_name_"],
         operator="contains",
         operand1=self,
-        operand2=other,
-        host=self.host,
-        port=self.port
+        operand2=other
     )
 
 CategoricalColumn.contains = __contains
@@ -699,9 +621,7 @@ def __cos(self):
         df_name=self.thisptr["df_name_"],
         operator="cos",
         operand1=self,
-        operand2=None,
-        host=self.host,
-        port=self.port
+        operand2=None
     )
 
 Column.cos = __cos
@@ -716,7 +636,7 @@ def __count(self, alias="new_column"):
     Args:
         alias (str): Name for the new column.
     """
-    return _Aggregation(alias, self, "count", self.host, self.port)
+    return _Aggregation(alias, self, "count")
 
 Column.count = __count
 _VirtualColumn.count = __count
@@ -730,7 +650,7 @@ def __count_categorical(self, alias="new_column"):
     Args:
         alias (str): Name for the new column.
     """
-    return _Aggregation(alias, self, "count_categorical", self.host, self.port)
+    return _Aggregation(alias, self, "count_categorical")
 
 
 CategoricalColumn.count = __count_categorical
@@ -745,7 +665,7 @@ def __count_distinct(self, alias="new_column"):
     Args:
         alias (str): Name for the new column.
     """
-    return _Aggregation(alias, self, "count_distinct", self.host, self.port)
+    return _Aggregation(alias, self, "count_distinct")
 
 CategoricalColumn.count_distinct = __count_distinct
 _VirtualCategoricalColumn.count_distinct = __count_distinct
@@ -763,9 +683,7 @@ def __day(self):
         df_name=self.thisptr["df_name_"],
         operator="day",
         operand1=self,
-        operand2=None,
-        host=self.host,
-        port=self.port
+        operand2=None
     )
 
 Column.day = __day
@@ -778,9 +696,7 @@ def __eq(self, other):
         df_name=self.thisptr["df_name_"],
         operator="equal_to",
         operand1=self,
-        operand2=other,
-        host=self.host,
-        port=self.port
+        operand2=other
     )
 
 Column.__eq__ = __eq
@@ -797,9 +713,7 @@ def __erf(self):
         df_name=self.thisptr["df_name_"],
         operator="erf",
         operand1=self,
-        operand2=None,
-        host=self.host,
-        port=self.port
+        operand2=None
     )
 
 Column.erf = __erf
@@ -813,9 +727,7 @@ def __exp(self):
         df_name=self.thisptr["df_name_"],
         operator="exp",
         operand1=self,
-        operand2=None,
-        host=self.host,
-        port=self.port
+        operand2=None
     )
 
 Column.exp = __exp
@@ -829,9 +741,7 @@ def __floor(self):
         df_name=self.thisptr["df_name_"],
         operator="floor",
         operand1=self,
-        operand2=None,
-        host=self.host,
-        port=self.port
+        operand2=None
     )
 
 Column.floor = __floor
@@ -845,9 +755,7 @@ def __gamma(self):
         df_name=self.thisptr["df_name_"],
         operator="tgamma",
         operand1=self,
-        operand2=None,
-        host=self.host,
-        port=self.port
+        operand2=None
     )
 
 Column.gamma = __gamma
@@ -860,9 +768,7 @@ def __ge(self, other):
         df_name=self.thisptr["df_name_"],
         operator="greater_equal",
         operand1=self,
-        operand2=other,
-        host=self.host,
-        port=self.port
+        operand2=other
     )
 
 Column.__ge__ = __ge
@@ -873,19 +779,11 @@ _VirtualColumn.__ge__ = __ge
 def __get(self, sock=None):
     """
     Transform column to numpy array
+
+    Args:
+        sock: Socket connecting the Python API with the getML
+            engine.
     """
-
-    # -------------------------------------------
-    # Create connection, if necessary.
-
-    if sock is None:
-        s = socket.socket(
-            socket.AF_INET,
-            socket.SOCK_STREAM
-        )
-        s.connect((self.host, self.port))
-    else:
-        s = sock
 
     # -------------------------------------------
     # Build command string
@@ -900,7 +798,11 @@ def __get(self, sock=None):
     # -------------------------------------------
     # Establish communication with getml engine
 
-    comm.send_cmd(s, json.dumps(cmd))
+    if sock is None:
+        s = comm.send_and_receive_socket(cmd)
+    else:
+        s = sock
+        comm.send_string(s, json.dumps(cmd))
 
     msg = comm.recv_string(s)
 
@@ -909,12 +811,13 @@ def __get(self, sock=None):
     # and close connection
 
     if msg != "Found!":
+        s.close()
         raise Exception(msg)
 
     mat = comm.recv_matrix(s)
 
     # -------------------------------------------
-    # Close connection, if necessary.
+    # Close connection.
 
     if sock is None:
         s.close()
@@ -944,19 +847,11 @@ _VirtualColumn.get = __get
 def __get_categorical(self, sock=None):
     """
     Transform column to numpy array
+
+    Args:
+        sock: Socket connecting the Python API with the getML
+            engine.
     """
-
-    # -------------------------------------------
-    # Create connection, if necessary.
-
-    if sock is None:
-        s = socket.socket(
-            socket.AF_INET,
-            socket.SOCK_STREAM
-        )
-        s.connect((self.host, self.port))
-    else:
-        s = sock
 
     # -------------------------------------------
     # Build command string
@@ -970,8 +865,11 @@ def __get_categorical(self, sock=None):
 
     # -------------------------------------------
     # Send command to engine
-
-    comm.send_cmd(s, json.dumps(cmd))
+    if sock is None:
+        s = comm.send_and_receive_socket(cmd)
+    else:
+        s = sock
+        comm.send_string(s, json.dumps(cmd))
 
     msg = comm.recv_string(s)
 
@@ -980,13 +878,13 @@ def __get_categorical(self, sock=None):
     # and close connection
 
     if msg != "Found!":
+        s.close()
         raise Exception(msg)
 
     mat = comm.recv_categorical_matrix(s)
 
     # -------------------------------------------
-    # Close connection, if necessary.
-
+    # Close connection.
     if sock is None:
         s.close()
 
@@ -1004,9 +902,7 @@ def __gt(self, other):
         df_name=self.thisptr["df_name_"],
         operator="greater",
         operand1=self,
-        operand2=other,
-        host=self.host,
-        port=self.port
+        operand2=other
     )
 
 Column.__gt__ = __gt
@@ -1025,9 +921,7 @@ def __hour(self):
         df_name=self.thisptr["df_name_"],
         operator="hour",
         operand1=self,
-        operand2=None,
-        host=self.host,
-        port=self.port
+        operand2=None
     )
 
 Column.hour = __hour
@@ -1041,9 +935,7 @@ def __is_inf(self):
         df_name=self.thisptr["df_name_"],
         operator="is_inf",
         operand1=self,
-        operand2=None,
-        host=self.host,
-        port=self.port
+        operand2=None
     )
 
 Column.is_inf = __is_inf
@@ -1057,9 +949,7 @@ def __is_nan(self):
         df_name=self.thisptr["df_name_"],
         operator="is_nan",
         operand1=self,
-        operand2=None,
-        host=self.host,
-        port=self.port
+        operand2=None
     )
 
 Column.is_nan = __is_nan
@@ -1072,9 +962,7 @@ def __le(self, other):
         df_name=self.thisptr["df_name_"],
         operator="less_equal",
         operand1=self,
-        operand2=other,
-        host=self.host,
-        port=self.port
+        operand2=other
     )
 
 Column.__le__ = __le
@@ -1088,9 +976,7 @@ def __lgamma(self):
         df_name=self.thisptr["df_name_"],
         operator="gamma",
         operand1=self,
-        operand2=None,
-        host=self.host,
-        port=self.port
+        operand2=None
     )
 
 Column.lgamma = __lgamma
@@ -1104,9 +990,7 @@ def __log(self):
         df_name=self.thisptr["df_name_"],
         operator="log",
         operand1=self,
-        operand2=None,
-        host=self.host,
-        port=self.port
+        operand2=None
     )
 
 Column.log = __log
@@ -1119,9 +1003,7 @@ def __lt(self, other):
         df_name=self.thisptr["df_name_"],
         operator="less",
         operand1=self,
-        operand2=other,
-        host=self.host,
-        port=self.port
+        operand2=other
     )
 
 Column.__lt__ = __lt
@@ -1136,7 +1018,7 @@ def __max(self, alias="new_column"):
     Args:
         alias (str): Name for the new column.
     """
-    return _Aggregation(alias, self, "max", self.host, self.port)
+    return _Aggregation(alias, self, "max")
 
 Column.max = __max
 _VirtualColumn.max = __max
@@ -1149,7 +1031,7 @@ def __median(self, alias="new_column"):
 
     **alias**: Name for the new column.
     """
-    return _Aggregation(alias, self, "median", self.host, self.port)
+    return _Aggregation(alias, self, "median")
 
 Column.median = __median
 _VirtualColumn.median = __median
@@ -1162,7 +1044,7 @@ def __min(self, alias="new_column"):
 
     **alias**: Name for the new column.
     """
-    return _Aggregation(alias, self, "min", self.host, self.port)
+    return _Aggregation(alias, self, "min")
 
 Column.min = __min
 _VirtualColumn.min = __min
@@ -1180,9 +1062,7 @@ def __minute(self):
         df_name=self.thisptr["df_name_"],
         operator="minute",
         operand1=self,
-        operand2=None,
-        host=self.host,
-        port=self.port
+        operand2=None
     )
 
 Column.minute = __minute
@@ -1195,9 +1075,7 @@ def __mod(self, other):
         df_name=self.thisptr["df_name_"],
         operator="fmod",
         operand1=self,
-        operand2=other,
-        host=self.host,
-        port=self.port
+        operand2=other
     )
 
 def __rmod(self, other):
@@ -1205,9 +1083,7 @@ def __rmod(self, other):
         df_name=self.thisptr["df_name_"],
         operator="fmod",
         operand1=other,
-        operand2=self,
-        host=self.host,
-        port=self.port
+        operand2=self
     )
 
 Column.__mod__ = __mod
@@ -1229,9 +1105,7 @@ def __month(self):
         df_name=self.thisptr["df_name_"],
         operator="month",
         operand1=self,
-        operand2=None,
-        host=self.host,
-        port=self.port
+        operand2=None
     )
 
 Column.month = __month
@@ -1244,9 +1118,7 @@ def __mul(self, other):
         df_name=self.thisptr["df_name_"],
         operator="multiplies",
         operand1=self,
-        operand2=other,
-        host=self.host,
-        port=self.port
+        operand2=other
     )
 
 Column.__mul__ = __mul
@@ -1263,9 +1135,7 @@ def __ne(self, other):
         df_name=self.thisptr["df_name_"],
         operator="not_equal_to",
         operand1=self,
-        operand2=other,
-        host=self.host,
-        port=self.port
+        operand2=other
     )
 
 Column.__ne__ = __ne
@@ -1281,9 +1151,7 @@ def __neg(self):
         df_name=self.thisptr["df_name_"],
         operator="multiplies",
         operand1=self,
-        operand2=-1.0,
-        host=self.host,
-        port=self.port
+        operand2=-1.0
     )
 
 Column.__neg__ = __neg
@@ -1296,9 +1164,7 @@ def __pow(self, other):
         df_name=self.thisptr["df_name_"],
         operator="pow",
         operand1=self,
-        operand2=other,
-        host=self.host,
-        port=self.port
+        operand2=other
     )
 
 def __rpow(self, other):
@@ -1306,9 +1172,7 @@ def __rpow(self, other):
         df_name=self.thisptr["df_name_"],
         operator="pow",
         operand1=other,
-        operand2=self,
-        host=self.host,
-        port=self.port
+        operand2=self
     )
 
 Column.__pow__ = __pow
@@ -1325,9 +1189,7 @@ def __round(self):
         df_name=self.thisptr["df_name_"],
         operator="round",
         operand1=self,
-        operand2=None,
-        host=self.host,
-        port=self.port
+        operand2=None
     )
 
 Column.round = __round
@@ -1346,9 +1208,7 @@ def __second(self):
         df_name=self.thisptr["df_name_"],
         operator="second",
         operand1=self,
-        operand2=None,
-        host=self.host,
-        port=self.port
+        operand2=None
     )
 
 Column.second = __second
@@ -1362,9 +1222,7 @@ def __sin(self):
         df_name=self.thisptr["df_name_"],
         operator="sin",
         operand1=self,
-        operand2=None,
-        host=self.host,
-        port=self.port
+        operand2=None
     )
 
 Column.sin = __sin
@@ -1378,9 +1236,7 @@ def __sqrt(self):
         df_name=self.thisptr["df_name_"],
         operator="sqrt",
         operand1=self,
-        operand2=None,
-        host=self.host,
-        port=self.port
+        operand2=None
     )
 
 Column.sqrt = __sqrt
@@ -1395,7 +1251,7 @@ def __stddev(self, alias="new_column"):
     Args:
         alias (str): Name for the new column.
     """
-    return _Aggregation(alias, self, "stddev", self.host, self.port)
+    return _Aggregation(alias, self, "stddev")
 
 Column.stddev = __stddev
 _VirtualColumn.stddev = __stddev
@@ -1407,9 +1263,7 @@ def __sub(self, other):
         df_name=self.thisptr["df_name_"],
         operator="minus",
         operand1=self,
-        operand2=other,
-        host=self.host,
-        port=self.port
+        operand2=other
     )
 
 def __rsub(self, other):
@@ -1417,9 +1271,7 @@ def __rsub(self, other):
         df_name=self.thisptr["df_name_"],
         operator="minus",
         operand1=other,
-        operand2=self,
-        host=self.host,
-        port=self.port
+        operand2=self
     )
 
 Column.__sub__ = __sub
@@ -1443,9 +1295,7 @@ def __substr(self, begin, length):
         df_name=self.thisptr["df_name_"],
         operator="substr",
         operand1=self,
-        operand2=None,
-        host=self.host,
-        port=self.port
+        operand2=None
     )
     col.thisptr["begin_"] = begin
     col.thisptr["len_"] = length
@@ -1463,7 +1313,7 @@ def __sum(self, alias="new_column"):
     Args:
         alias (str): Name for the new column.
     """
-    return _Aggregation(alias, self, "sum", self.host, self.port)
+    return _Aggregation(alias, self, "sum")
 
 Column.sum = __sum
 _VirtualColumn.sum = __sum
@@ -1476,9 +1326,7 @@ def __tan(self):
         df_name=self.thisptr["df_name_"],
         operator="tan",
         operand1=self,
-        operand2=None,
-        host=self.host,
-        port=self.port
+        operand2=None
     )
 
 Column.tan = __tan
@@ -1492,9 +1340,7 @@ def __to_num(self):
         df_name=self.thisptr["df_name_"],
         operator="to_num",
         operand1=self,
-        operand2=None,
-        host=self.host,
-        port=self.port
+        operand2=None
     )
 
 CategoricalColumn.to_num = __to_num
@@ -1508,9 +1354,7 @@ def __to_str(self):
         df_name=self.thisptr["df_name_"],
         operator="to_str",
         operand1=self,
-        operand2=None,
-        host=self.host,
-        port=self.port
+        operand2=None
     )
 
 Column.to_str = __to_str
@@ -1531,9 +1375,7 @@ def __to_ts(self, time_formats=["%Y-%m-%dT%H:%M:%s%z", "%Y-%m-%d %H:%M:%S", "%Y-
         df_name=self.thisptr["df_name_"],
         operator="to_ts",
         operand1=self,
-        operand2=None,
-        host=self.host,
-        port=self.port
+        operand2=None
     )
     col.thisptr["time_formats_"] = time_formats
     return col
@@ -1549,9 +1391,7 @@ def __truediv(self, other):
         df_name=self.thisptr["df_name_"],
         operator="divides",
         operand1=self,
-        operand2=other,
-        host=self.host,
-        port=self.port
+        operand2=other
     )
 
 def __rtruediv(self, other):
@@ -1559,9 +1399,7 @@ def __rtruediv(self, other):
         df_name=self.thisptr["df_name_"],
         operator="divides",
         operand1=other,
-        operand2=self,
-        host=self.host,
-        port=self.port
+        operand2=self
     )
 
 Column.__truediv__ = __truediv
@@ -1587,9 +1425,7 @@ def __update(self, condition, values):
         df_name=self.thisptr["df_name_"],
         operator="update",
         operand1=self,
-        operand2=values,
-        host=self.host,
-        port=self.port
+        operand2=values
     )
     if condition.thisptr["type_"] != "VirtualBooleanColumn":
         raise Exception("Condition for an update must be a Boolen column.")
@@ -1617,9 +1453,7 @@ def __update_categorical(self, condition, values):
         df_name=self.thisptr["df_name_"],
         operator="update",
         operand1=self,
-        operand2=values,
-        host=self.host,
-        port=self.port
+        operand2=values
     )
     if condition.thisptr["type_"] != "VirtualBooleanColumn":
         raise Exception("Condition for an update must be a Boolen column.")
@@ -1639,7 +1473,7 @@ def __var(self, alias="new_column"):
     Args:
         alias (str): Name for the new column.
     """
-    return _Aggregation(alias, self, "var", self.host, self.port)
+    return _Aggregation(alias, self, "var")
 
 Column.var = __var
 _VirtualColumn.var = __var
@@ -1657,9 +1491,7 @@ def __weekday(self):
         df_name=self.thisptr["df_name_"],
         operator="weekday",
         operand1=self,
-        operand2=None,
-        host=self.host,
-        port=self.port
+        operand2=None
     )
 
 Column.weekday = __weekday
@@ -1678,9 +1510,7 @@ def __year(self):
         df_name=self.thisptr["df_name_"],
         operator="year",
         operand1=self,
-        operand2=None,
-        host=self.host,
-        port=self.port
+        operand2=None
     )
 
 Column.year = __year
@@ -1699,9 +1529,7 @@ def __yearday(self):
         df_name=self.thisptr["df_name_"],
         operator="yearday",
         operand1=self,
-        operand2=None,
-        host=self.host,
-        port=self.port
+        operand2=None
     )
 
 Column.yearday = __yearday

@@ -1,15 +1,4 @@
-import datetime
 import json
-import numbers
-import os
-import platform
-import socket
-import sys
-import time
-import warnings
-
-import numpy as np
-import pandas as pd
 
 import getml.communication as comm
 
@@ -22,10 +11,7 @@ class Container(object):
 
     # -------------------------------------------------------------------------
 
-    def __init__(self, host='localhost', port=1708):
-
-        self.host = host
-        self.port = port
+    def __init__(self):
 
         self.colnames = None
         self.units = None
@@ -40,17 +26,13 @@ class Container(object):
 
         Args:
             numpy_array (:class:`numpy.ndarray`): Number of columns should match the number of columns of the object itself.
-            s:  :w
-            Socket
+            s: Socket
         """
-
+        
         # -------------------------------------------
         # Send own JSON command to getml engine
 
-        comm.send_cmd(
-            s,
-            json.dumps(self.thisptr)
-        )
+        comm.send_string(s, json.dumps(self.thisptr))
 
         # -------------------------------------------
         # Send data to getml engine
@@ -100,24 +82,7 @@ class Container(object):
         # -------------------------------------------
         # Send JSON command to engine
 
-        s = socket.socket(
-            socket.AF_INET,
-            socket.SOCK_STREAM
-        )
-        s.connect((self.host, self.port))
-
-        comm.send_cmd(
-            s,
-            json.dumps(cmd)
-        )
-
-        # -------------------------------------------
-        # Make sure everything went well
-
-        msg = comm.recv_string(s)
-
-        if msg != "Success!":
-            raise Exception(msg)
+        comm.send(cmd)
 
         # -------------------------------------------
         # Store the new unit

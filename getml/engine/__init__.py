@@ -13,34 +13,28 @@
 # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 # IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 # FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# AUTHORS OR COPYRIGHT :wHOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.
 
-import pkg_resources
+"""
+This module contains communication routines with the getml engine.
+"""
 
-# Default connection settings to communicate with the engine. See
-# communincation.send().
-host = 'localhost'
-port = 1708
-
-try:
-    __version__ = pkg_resources.get_distribution(__name__).version
-except pkg_resources.DistributionNotFound:
-    # package is not installed
-    pass
+from .data_frame import DataFrame
+from .helpers import delete_project, is_alive, list_data_frames, list_models, list_projects, load_data_frame, run, setup, set_project, shutdown
 
 __all__ = (
-    "aggregations",
-    "columns",
-    "communication",
-    "container",
-    "database",
-    "datasets",
-    "engine",
-    "hyperopt",
-    "loss_functions",
-    "models",
-    "predictors"
+    "DataFrame",
+    "delete_project",
+    "list_data_frames",
+    "list_models",
+    "list_projects",
+    "load_data_frame",
+    "is_alive",
+    "run",
+    "setup",
+    "set_project",
+    "shutdown"
 )
