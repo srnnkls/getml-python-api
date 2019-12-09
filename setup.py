@@ -31,16 +31,16 @@ long_description = """
 
     This is the official python client for the getML engine.
 
-    Documentation and more details at https://docs.get.ml/0.8
+    Documentation and more details at https://docs.get.ml/0.9
 """
 
 
 setup(
     name="getml",
-    version="0.8",
+    version="0.9",
     author="getML",
     author_email="support@get.ml",
-    url='https://docs.get.ml/0.8',
+    url='https://docs.get.ml/0.9',
     download_url='https://github.com/getml/getml-python-api',
     description="Python API for getML",
     long_description=long_description,
