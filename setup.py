@@ -23,7 +23,7 @@
 from setuptools import setup, find_packages
 
 long_description = """
-    getML (https://get.ml) is a software for automated machine learning
+    getML (https://getml.com) is a software for automated machine learning
     (AutoML) with a special focus on feature engineering for relational data
     and time series. The getML algorithms can produce features that are far
     more advanced than what any data scientist could write by hand or what you
@@ -31,16 +31,16 @@ long_description = """
 
     This is the official python client for the getML engine.
 
-    Documentation and more details at https://docs.get.ml/0.9
+    Documentation and more details at https://docs.getml.com/0.9.1
 """
 
 
 setup(
     name="getml",
-    version="0.9",
+    version="0.9.1",
     author="getML",
-    author_email="support@get.ml",
-    url='https://docs.get.ml/0.9',
+    author_email="support@getml.com",
+    url='https://docs.getml.com/0.9.1',
     download_url='https://github.com/getml/getml-python-api',
     description="Python API for getML",
     long_description=long_description,
