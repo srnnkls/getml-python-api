@@ -229,7 +229,7 @@ def list_tables():
     # -------------------------------------------
     # Send JSON command to engine.
 
-    s = comm.send_and_receive_string(cmd)
+    s = comm.send_and_receive_socket(cmd)
 
     # -------------------------------------------
     # Make sure that everything went well.
